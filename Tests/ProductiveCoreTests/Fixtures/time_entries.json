@@ -1,0 +1,34 @@
+{
+  "data": [
+    {
+      "id": "501", "type": "time_entries",
+      "attributes": { "date": "2026-09-30", "time": 190, "note": "<p>Built the PDP test &amp; QA</p>", "approved": false, "invoiced": false },
+      "relationships": {
+        "person": { "data": { "type": "people", "id": "77" } },
+        "service": { "data": { "type": "services", "id": "9001" } }
+      }
+    },
+    {
+      "id": "502", "type": "time_entries",
+      "attributes": { "date": "2026-09-29", "time": 60, "note": null, "approved": true },
+      "relationships": {
+        "service": { "data": { "type": "services", "id": "9002" } },
+        "task": { "data": null }
+      }
+    }
+  ],
+  "included": [
+    { "id": "9001", "type": "services", "attributes": { "name": "CRO Development" },
+      "relationships": { "deal": { "data": { "type": "deals", "id": "300" } } } },
+    { "id": "9002", "type": "services", "attributes": { "name": "Internal meetings" },
+      "relationships": { "deal": { "data": null } } },
+    { "id": "300", "type": "deals", "attributes": { "name": "[NWR] NWR - Full service experimentation - Budget (Sep 2026)" },
+      "relationships": {
+        "project": { "data": { "type": "projects", "id": "40" } },
+        "company": { "data": { "type": "companies", "id": "8" } }
+      } },
+    { "id": "40", "type": "projects", "attributes": { "name": "[NWR] NWR - Full service experimentation" } },
+    { "id": "8", "type": "companies", "attributes": { "name": "Northwind Retail Limited" } }
+  ],
+  "meta": { "current_page": 1, "total_pages": 1 }
+}

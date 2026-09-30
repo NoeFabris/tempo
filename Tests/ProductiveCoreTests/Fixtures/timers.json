@@ -1,0 +1,11 @@
+{
+  "data": [
+    { "id": "7001", "type": "timers",
+      "attributes": { "started_at": "2026-09-30T09:15:00.000+01:00", "stopped_at": null, "total_time": 0 },
+      "relationships": { "time_entry": { "data": { "type": "time_entries", "id": "501" } } } },
+    { "id": "7000", "type": "timers",
+      "attributes": { "started_at": "2026-09-29T08:00:00Z", "stopped_at": "2026-09-29T09:00:00Z", "total_time": 60 },
+      "relationships": { "time_entry": { "data": { "type": "time_entries", "id": "502" } } } }
+  ],
+  "included": []
+}

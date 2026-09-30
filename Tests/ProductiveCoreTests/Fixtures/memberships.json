@@ -1,0 +1,11 @@
+{
+  "data": [
+    { "id": "1", "type": "organization_memberships", "attributes": {},
+      "relationships": {
+        "organization": { "data": { "type": "organizations", "id": "555" } },
+        "person": { "data": { "type": "people", "id": "77" } } } }
+  ],
+  "included": [
+    { "id": "77", "type": "people", "attributes": { "first_name": "Noe", "last_name": "Fabris" } }
+  ]
+}
