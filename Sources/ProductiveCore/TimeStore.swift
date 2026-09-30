@@ -609,9 +609,9 @@ public final class TimeStore: ObservableObject {
 
     // MARK: - Calendar
 
-    /// The loggable meetings of `day` (loaded by `loadCalendar`).
+    /// All calendar events of `day` (loaded by `loadCalendar`), in time order.
     public func meetings(on day: Day) -> [CalendarEvent] {
-        (calendar[day] ?? []).filter(\.isLoggable)
+        calendar[day] ?? []
     }
 
     /// The entry that logged `event`, if it still exists.

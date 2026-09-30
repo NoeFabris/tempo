@@ -80,7 +80,9 @@ public enum RelationshipData: Decodable, Sendable {
         let c = try decoder.singleValueContainer()
         if c.decodeNil() { self = .none }
         else if let many = try? c.decode([ResourceIdentifier].self) { self = .many(many) }
-        else { self = .one(try c.decode(ResourceIdentifier.self)) }
+        // Productive sometimes sends {"type": "organizations", "id": null}: treat it as no link.
+        else if let one = try? c.decode(ResourceIdentifier.self) { self = .one(one) }
+        else { self = .none }
     }
 }
 
@@ -134,14 +136,21 @@ public struct Document: Decodable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        if let many = try? c.decode([Resource].self, forKey: .data) { data = many }
+        // Lossy: one resource that does not decode must not hide the others.
+        if let many = try? c.decode([Lossy<Resource>].self, forKey: .data) { data = many.compactMap(\.value) }
         else if let one = try? c.decode(Resource.self, forKey: .data) { data = [one] }
         else { data = [] }
-        included = try c.decodeIfPresent([Resource].self, forKey: .included) ?? []
+        included = (try? c.decodeIfPresent([Lossy<Resource>].self, forKey: .included))??.compactMap(\.value) ?? []
         meta = try c.decodeIfPresent([String: JSONValue].self, forKey: .meta) ?? [:]
     }
 
     public var totalPages: Int? { meta["total_pages"]?.int }
+}
+
+/// Decodes a value, or nil when it does not decode.
+struct Lossy<T: Decodable>: Decodable {
+    let value: T?
+    init(from decoder: Decoder) throws { value = try? T(from: decoder) }
 }
 
 /// Looks up resources from `data` and `included` by type and id.

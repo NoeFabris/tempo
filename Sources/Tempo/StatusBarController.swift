@@ -44,7 +44,7 @@ final class Navigator: ObservableObject {
 
     /// A new entry for a calendar meeting: its day, length and name, and the service used last time.
     func startAdd(event: CalendarEvent, service: Service?) {
-        draft = EntryDraft(service: service, day: Day(event.start), time: TimeFormat.hm(event.minutes),
+        draft = EntryDraft(service: service, day: Day(event.start), time: event.isAllDay ? "" : TimeFormat.hm(event.minutes),
                            note: event.name, event: event)
         screen = .add
     }

@@ -34,9 +34,18 @@ public struct CalendarEvent: Identifiable, Equatable, Sendable {
     /// The key that the remembered service uses: the series, or the name for single meetings.
     public var seriesKey: String { seriesID ?? "name:" + name.lowercased() }
 
-    /// Meetings worth logging: timed, not declined, not marked free.
+    /// A short label for events that are usually not logged, or nil.
+    public var statusLabel: String? {
+        if name.lowercased().hasPrefix("canceled:") || name.lowercased().hasPrefix("cancelled:") { return "Cancelled" }
+        if responseStatus.lowercased() == "declined" { return "Declined" }
+        if isAllDay { return "All day" }
+        if eventType.lowercased() == "free" { return "Free" }
+        return nil
+    }
+
+    /// Meetings that are usually logged: timed, not declined, not cancelled, not marked free.
     public var isLoggable: Bool {
-        !isAllDay && minutes > 0 && responseStatus.lowercased() != "declined" && eventType.lowercased() != "free"
+        statusLabel == nil && minutes > 0
     }
 }
 

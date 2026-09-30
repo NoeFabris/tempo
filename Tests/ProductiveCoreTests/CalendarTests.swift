@@ -27,6 +27,7 @@ final class CalendarMappingTests: XCTestCase {
         XCTAssertFalse(CalendarEvent(id: "b", name: "x", start: start, end: start.addingTimeInterval(1800), eventType: "free").isLoggable)
         XCTAssertFalse(CalendarEvent(id: "c", name: "x", start: start, end: start.addingTimeInterval(86400), isAllDay: true).isLoggable)
         XCTAssertEqual(CalendarEvent(id: "d", name: "Ad Hoc", start: start, end: start).seriesKey, "name:ad hoc")
+        XCTAssertEqual(CalendarEvent(id: "e", name: "Canceled: Sync", start: start, end: start.addingTimeInterval(1800)).statusLabel, "Cancelled")
     }
 }
 
@@ -45,7 +46,8 @@ final class CalendarStoreTests: XCTestCase {
         let store = TimeStore(settings: settings, tokenStore: MemoryTokenStore(), makeAPI: { _ in api })
         await store.connect(token: "t", organizationID: "1")
 
-        XCTAssertEqual(store.meetings(on: today).map(\.id), ["ev1"], "declined meetings are not listed")
+        XCTAssertEqual(store.meetings(on: today).map(\.id), ["ev1", "ev2"], "all events are listed")
+        XCTAssertEqual(store.meetings(on: today).map(\.statusLabel), [nil, "Declined"])
         XCTAssertNil(store.rememberedService(for: daily))
 
         await store.addEntry(service: cro, day: today, minutes: daily.minutes, note: daily.name, event: daily)
@@ -69,5 +71,24 @@ final class CalendarStoreTests: XCTestCase {
         api.failure = nil
         XCTAssertTrue(store.meetings(on: Day(Date()).adding(days: 1)).isEmpty)
         XCTAssertNil(store.lastError, "a missing calendar is not an error")
+    }
+}
+
+final class LossyDecodingTests: XCTestCase {
+    func testNullRelationshipIDAndBadResource() throws {
+        let json = #"""
+        {"data":[
+          {"id":"1","type":"calendar_events","attributes":{"name":"A","start_time":"2026-09-30T08:30:00.000Z",
+            "end_time":"2026-09-30T09:00:00.000Z"},
+           "relationships":{"organization":{"data":{"type":"organizations","id":null}},"person":{"data":null}}},
+          {"type":"calendar_events"},
+          {"id":"3","type":"calendar_events","attributes":{"name":"C","start_time":"2026-09-30T10:00:00.000Z",
+            "end_time":"2026-09-30T10:15:00.000Z"}}
+        ]}
+        """#
+        let doc = try JSONDecoder().decode(Document.self, from: Data(json.utf8))
+        XCTAssertEqual(doc.data.map(\.id), ["1", "3"], "the resource without an id is skipped, the others stay")
+        XCTAssertNil(doc.data[0].related("organization"))
+        XCTAssertEqual(doc.data.compactMap(Mapping.calendarEvent).map(\.minutes), [30, 15])
     }
 }

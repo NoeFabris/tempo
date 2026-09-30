@@ -322,7 +322,7 @@ struct MeetingRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .layoutPriority(1)
-            Text(TimeFormat.hm(event.minutes)).font(Brand.digits(13)).foregroundStyle(Brand.secondary).fixedSize()
+            Text(event.isAllDay ? "–" : TimeFormat.hm(event.minutes)).font(Brand.digits(13)).foregroundStyle(Brand.secondary).fixedSize()
             if logged == nil {
                 IconButton(systemName: "plus", help: "Log this meeting", tint: Brand.violet) {
                     nav.startAdd(event: event, service: store.rememberedService(for: event))
@@ -334,11 +334,14 @@ struct MeetingRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 8).stroke(Brand.separator))
+        .opacity(event.isLoggable || logged != nil ? 1 : 0.55)
         .help(event.organizer.isEmpty ? event.name : "\(event.name) — \(event.organizer)")
     }
 
     private func subtitle(_ logged: TimeEntry?) -> String {
-        let time = "\(event.start.formatted(date: .omitted, time: .shortened))–\(event.end.formatted(date: .omitted, time: .shortened))"
+        var time = event.isAllDay ? "All day"
+            : "\(event.start.formatted(date: .omitted, time: .shortened))–\(event.end.formatted(date: .omitted, time: .shortened))"
+        if let label = event.statusLabel, !event.isAllDay { time += " · \(label)" }
         guard let logged else { return time }
         return "\(time) · logged on \(TimerHeaderView.client(logged.service))"
     }
