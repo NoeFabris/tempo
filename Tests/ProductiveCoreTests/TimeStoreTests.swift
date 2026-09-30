@@ -115,6 +115,15 @@ final class TimeStoreTests: XCTestCase {
         XCTAssertEqual(tokens.token, "tok")
     }
 
+    func testStartWithNoteMakesEntryWithThatNote() async {
+        api.entries = [TimeEntry(id: "501", day: Day(Date()), minutes: 30, note: "", service: cro)]
+        let store = await connectedStore()
+        await store.start(cro, note: "E97 QA")
+        XCTAssertTrue(api.calls.contains("create 9001 0"), "a noted start does not join the entry without a note")
+        XCTAssertEqual(api.entries.last?.note, "E97 QA")
+        XCTAssertEqual(store.runningEntry?.note, "E97 QA")
+    }
+
     func testWeekendsHiddenByDefault() async {
         let store = await connectedStore()
         XCTAssertFalse(store.showWeekends)

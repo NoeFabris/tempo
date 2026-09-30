@@ -29,97 +29,59 @@ struct MainView: View {
 struct TimerHeaderView: View {
     @EnvironmentObject var store: TimeStore
     @EnvironmentObject var nav: Navigator
+    @State private var note = ""
+    @FocusState private var noteFocused: Bool
 
     var body: some View {
         if let entry = store.runningEntry {
-            HStack(spacing: 10) {
-                Circle().fill(Brand.violet).frame(width: 8, height: 8)
-                EntryLabels(entry: entry, titleSize: 15)
-                    .layoutPriority(1)
-                Spacer(minLength: 4)
-                Text(TimeFormat.hms(seconds: store.runningSeconds)).font(Brand.digits(15, .semibold)).fixedSize()
-                Button { Task { await store.stop() } } label: {
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Brand.onViolet)
-                        .frame(width: 30, height: 30)
-                        .background(Circle().fill(Brand.violet))
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Stop the timer")
-            }
-            .card()
-        } else {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    BrandHeading(bold: "Not", italic: "tracking", size: 16)
-                    Spacer()
-                    Button("Start…") { nav.screen = .picker(.start) }
-                        .buttonStyle(PrimaryButtonStyle())
-                }
-                if !quickStarts.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach(quickStarts) { chip in
-                                Button { Task { await chip.start(store) } } label: {
-                                    HStack(spacing: 5) {
-                                        Image(systemName: "play.fill").font(.system(size: 8))
-                                        Text(chip.title).font(Brand.font(12, .semibold))
-                                        if !chip.detail.isEmpty {
-                                            Text(chip.detail).font(Brand.font(12)).foregroundStyle(Brand.secondary)
-                                        }
-                                    }
-                                    .lineLimit(1)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(Capsule().stroke(Brand.separator))
-                                    .contentShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-                                .help(chip.help)
-                            }
-                        }
-                        .padding(1) // Keeps the capsule strokes inside the scroll view.
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    Circle().fill(Brand.violet).frame(width: 8, height: 8)
+                    EntryLabels(entry: entry, titleSize: 15)
+                        .layoutPriority(1)
+                    Spacer(minLength: 4)
+                    Text(TimeFormat.hms(seconds: store.runningSeconds)).font(Brand.digits(15, .semibold)).fixedSize()
+                    Button { Task { await store.stop() } } label: {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.onViolet)
+                            .frame(width: 30, height: 30)
+                            .background(Circle().fill(Brand.violet))
+                            .contentShape(Circle())
                     }
+                    .buttonStyle(.plain)
+                    .help("Stop the timer")
                 }
+                // Optional: a note for a timer started without one (for example from the menu bar ▶).
+                if entry.note.isEmpty && entry.jira == nil {
+                    TextField("Add a note…", text: $note)
+                        .focused($noteFocused)
+                        .textFieldStyle(.plain)
+                        .font(Brand.font(12))
+                        .padding(.leading, 18)
+                        .disabled(entry.isPending)
+                        .onSubmit { saveNote(entry) }
+                }
+            }
+            .card()
+            .onChange(of: entry.id) { _, _ in note = "" }
+        } else {
+            HStack {
+                BrandHeading(bold: "Not", italic: "tracking", size: 16)
+                Spacer()
+                Button("Start…") { nav.screen = .picker(.start) }
+                    .buttonStyle(PrimaryButtonStyle())
             }
             .card()
         }
     }
 
-    /// A quick-start chip: client first, then the note (resume) or the service (favourite).
-    struct Chip: Identifiable {
-        let id: String
-        let title: String
-        let detail: String
-        let help: String
-        let start: @MainActor (TimeStore) async -> Void
-    }
-
-    /// The task that ▶ resumes first, then the favourites.
-    private var quickStarts: [Chip] {
-        var chips: [Chip] = []
-        if let entry = store.resumableEntry {
-            chips.append(Chip(id: "resume", title: Self.client(entry.service),
-                              detail: entry.note.isEmpty ? (entry.jira?.key ?? entry.service.name) : entry.note,
-                              help: "Resume: \(entry.service.name) — \(entry.service.context)") { store in
-                await store.start(store.resolvedService(for: entry.service), continuing: entry)
-            })
-        } else if let last = store.lastService {
-            chips.append(Chip(id: "last", title: Self.client(last), detail: last.name, help: last.context) { store in
-                _ = await store.toggle()
-            })
+    private func saveNote(_ entry: TimeEntry) {
+        let text = note.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        Task {
+            if await store.updateEntry(entry, changes: EntryChanges(note: text)) { note = "" }
         }
-        let lastChipService = store.resumableEntry == nil ? store.lastService?.id : nil
-        for fav in store.favourites where !store.isMissing(fav) && fav.serviceID != lastChipService {
-            let service = fav.service
-            chips.append(Chip(id: "fav-\(fav.serviceID)", title: Self.client(service), detail: service.name,
-                              help: service.context) { store in
-                await store.start(store.resolvedService(for: service))
-            })
-        }
-        return chips
     }
 
     static func client(_ service: Service) -> String {

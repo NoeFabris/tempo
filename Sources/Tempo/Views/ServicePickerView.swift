@@ -9,6 +9,8 @@ struct ServicePickerView: View {
     @EnvironmentObject var nav: Navigator
     let mode: Navigator.PickerMode
     @State private var query = ""
+    /// Optional note for the new timer (start mode only).
+    @State private var note = ""
     @State private var expanded: Set<String> = []
     @FocusState private var searchFocused: Bool
 
@@ -26,7 +28,15 @@ struct ServicePickerView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 8)
+            .padding(.bottom, mode == .start ? 6 : 8)
+
+            if mode == .start {
+                TextField("Note (optional)", text: $note)
+                    .brandField()
+                    .padding(.horizontal, 16)
+                    .padding(.trailing, 30)
+                    .padding(.bottom, 8)
+            }
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 4) {
@@ -187,7 +197,8 @@ struct ServicePickerView: View {
         switch mode {
         case .start:
             nav.screen = .main
-            Task { await store.start(service) }
+            let note = note.trimmingCharacters(in: .whitespaces)
+            Task { await store.start(service, note: note) }
         case .form:
             nav.draft.service = service
             nav.screen = backScreen
