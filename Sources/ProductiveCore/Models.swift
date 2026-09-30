@@ -85,6 +85,9 @@ public struct TimeEntry: Identifiable, Equatable, Sendable {
         self.service = service
         self.isLocked = isLocked
     }
+
+    /// A local placeholder for a start that has not reached Productive yet.
+    public var isPending: Bool { id.hasPrefix("pending-") }
 }
 
 public struct RunningTimer: Identifiable, Equatable, Sendable {

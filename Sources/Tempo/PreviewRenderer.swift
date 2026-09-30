@@ -29,7 +29,7 @@ enum PreviewRenderer {
             await store.start(api.services[0])
             let running: [(String, Navigator.Screen)] = [
                 ("main-running", .main), ("picker", .picker(.start)),
-                ("edit", .edit(store.entries.first { $0.service.id == api.services[1].id }!)), ("settings", .settings),
+                ("edit", .edit(store.entries.first { $0.service.id == api.services[1].id }!.id)), ("settings", .settings),
             ]
             for scheme in [ColorScheme.dark, .light] {
                 for (name, screen) in running { render(store, screen, scheme, dir, name) }

@@ -8,16 +8,37 @@ public protocol TokenStoring: Sendable {
 extension KeychainStore: TokenStoring {}
 
 /// A start or stop that could not reach Productive. Sent at the next successful refresh.
+/// Every action sends absolute minutes, so a retry after a partial failure gives the same result.
 enum PendingAction: Equatable {
-    /// Start a timer on `service`; `at` is the click time.
-    case start(service: Service, at: Date)
+    /// Start a timer on `service`. `at` is the click time. `entryID` is the entry to continue
+    /// (with `baseMinutes`), or nil to create one.
+    case start(id: UUID, service: Service, at: Date, entryID: String?, baseMinutes: Int)
     /// Stop timer `timerID`, and set its entry to `baseMinutes` + the minutes from `startedAt` to `at`.
-    case stop(timerID: String, entryID: String, startedAt: Date, baseMinutes: Int, at: Date)
-    /// A start and stop that both happened offline: add `minutes` to `service` on `day`.
-    case log(service: Service, day: Day, minutes: Int)
+    case stop(id: UUID, timerID: String, entryID: String, startedAt: Date, baseMinutes: Int, at: Date)
+    /// A start and stop that both happened offline: set `entryID` to `baseMinutes + minutes`,
+    /// or create an entry of `minutes` when `entryID` is nil.
+    case log(id: UUID, service: Service, day: Day, entryID: String?, baseMinutes: Int, minutes: Int)
+
+    var id: UUID {
+        switch self {
+        case .start(let id, _, _, _, _), .stop(let id, _, _, _, _, _), .log(let id, _, _, _, _, _): return id
+        }
+    }
+}
+
+/// The local state at a stop, used to send the stop and to undo it if Productive refuses it.
+private struct StopSnapshot {
+    let timer: RunningTimer
+    let baseMinutes: Int
+    let previousMinutes: Int?
 }
 
 /// The app state. The only object that calls `ProductiveAPI`.
+///
+/// Concurrency model: user actions change the published state at once (optimistic UI) and
+/// increase `generation`. The API work of every action and refresh runs one at a time on a
+/// serial queue. A refresh discards its results when `generation` changed while it waited,
+/// so an old server response never overwrites a newer user action.
 @MainActor
 public final class TimeStore: ObservableObject {
     public enum Phase: Equatable { case setup, ready }
@@ -50,6 +71,13 @@ public final class TimeStore: ObservableObject {
     private var servicesLoadedAt: Date?
     private var ticker: Timer?
     private var poller: Timer?
+
+    private var generation = 0
+    private var tail: Task<Void, Never>?
+    private var refreshQueued = false
+    /// Real timers for optimistic starts, keyed by the start's action id.
+    private var startedTimers: [UUID: RunningTimer] = [:]
+    private static let placeholderPrefix = "pending-"
 
     public init(settings: SettingsStore = SettingsStore(),
                 tokenStore: TokenStoring = KeychainStore(),
@@ -102,6 +130,10 @@ public final class TimeStore: ObservableObject {
         return list
     }
 
+    public func entry(id: String) -> TimeEntry? {
+        entries.first { $0.id == id } ?? (runningEntry?.id == id ? runningEntry : nil)
+    }
+
     public func total(on day: Day) -> Int { entries(on: day).reduce(0) { $0 + liveMinutes($1) } }
     public var weekTotal: Int { weekDays.reduce(0) { $0 + total(on: $1) } }
     public var isCurrentWeek: Bool { weekDays.contains(today) }
@@ -111,6 +143,19 @@ public final class TimeStore: ObservableObject {
         if let running = runningEntry { return liveMinutes(running) }
         guard let last = settings.lastService else { return 0 }
         return entries(on: today).filter { $0.service.id == last.id }.reduce(0) { $0 + $1.minutes }
+    }
+
+    // MARK: - Serial queue
+
+    /// Runs `op` after all earlier queued operations.
+    private func serial<T>(_ op: @escaping @MainActor () async -> T) async -> T {
+        let previous = tail
+        let task = Task { @MainActor () -> T in
+            await previous?.value
+            return await op()
+        }
+        tail = Task { _ = await task.value }
+        return await task.value
     }
 
     // MARK: - Lifecycle
@@ -133,42 +178,57 @@ public final class TimeStore: ObservableObject {
         let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
         let org = organizationID.trimmingCharacters(in: .whitespacesAndNewlines)
         let candidate = makeAPI(ProductiveConfig(token: token, organizationID: org))
+        let me: Person
         do {
-            let me = try await candidate.me()
-            tokenStore.write(token)
-            settings.organizationID = org
-            settings.person = me
-            api = candidate
-            person = me
-            phase = .ready
-            lastError = nil
-            startClocks()
-            servicesLoadedAt = nil
-            await refresh()
-            return me
+            me = try await candidate.me()
         } catch {
             lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return nil
         }
+        guard tokenStore.write(token) else {
+            lastError = "Could not save the token in the Keychain."
+            return nil
+        }
+        let sameAccount = me.id == person?.id && org == settings.organizationID
+        generation += 1 // Discard any refresh of the old account that is still running.
+        if !sameAccount { resetAccountState() }
+        settings.organizationID = org
+        settings.person = me
+        api = candidate
+        person = me
+        phase = .ready
+        lastError = nil
+        servicesLoadedAt = nil
+        startClocks()
+        await serial { [weak self] in await self?.performRefresh() }
+        return me
     }
 
     public func signOut() {
+        generation += 1
         tokenStore.write("")
         settings.person = nil
         api = nil
         person = nil
+        resetAccountState()
+        phase = .setup
+        stopClocks()
+    }
+
+    private func resetAccountState() {
         timer = nil
         entries = []
         services = []
+        replacements = [:]
         pending = []
-        phase = .setup
-        stopClocks()
+        startedTimers = [:]
+        isOffline = false
     }
 
     private func startClocks() {
         guard ticker == nil else { return }
         ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
+            MainActor.assumeIsolated { _ = self?.advanceClock() }
         }
         poller = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { _ = Task { await self?.refresh() } }
@@ -182,49 +242,74 @@ public final class TimeStore: ObservableObject {
         poller = nil
     }
 
-    func tick() {
-        let previousDay = today
+    /// Reads the clock. At midnight, moves the week view to the new day when it showed the old day.
+    @discardableResult
+    func advanceClock() -> Date {
+        let previousDay = Day(now)
         now = clock()
-        if today != previousDay {
-            // Midnight: move the week view to the new day when it showed the old day.
-            if selectedDay == previousDay { selectedDay = today }
-            if weekDays.contains(previousDay) { weekDays = Week.days(containing: today, firstWeekday: firstWeekday) }
+        let newDay = today
+        if newDay != previousDay {
+            if selectedDay == previousDay { selectedDay = newDay }
+            if weekDays.contains(previousDay) { weekDays = Week.days(containing: newDay, firstWeekday: firstWeekday) }
         }
+        return now
     }
 
     // MARK: - Refresh
 
     public func refresh() async {
-        guard let api, let person, !isLoading else { return }
+        guard api != nil, !refreshQueued else { return }
+        refreshQueued = true
+        await serial { [weak self] in
+            self?.refreshQueued = false
+            await self?.performRefresh()
+        }
+    }
+
+    public func refreshServices() async {
+        await serial { [weak self] in await self?.performServicesRefresh() }
+    }
+
+    /// Runs on the serial queue only.
+    private func performRefresh() async {
+        guard let api, let person else { return }
+        let gen = generation
         isLoading = true
         defer { isLoading = false }
-        now = clock()
+        advanceClock()
         do {
-            try await flushPending()
+            try await flushPending(api: api, person: person)
             async let timers = api.recentTimers(personID: person.id)
             let entryList = try await loadEntries(api: api, personID: person.id)
             let running = try await timers.first(where: \.isRunning)
+            // A user action changed the state while this refresh waited; its own work follows.
+            guard gen == generation else { return }
             entries = entryList
             setTimer(running)
             isOffline = false
             lastError = nil
             if servicesLoadedAt.map({ now.timeIntervalSince($0) > 6 * 3600 }) ?? true {
-                await refreshServices()
+                await performServicesRefresh()
             }
         } catch {
+            guard gen == generation else { return }
             handle(error)
         }
     }
 
-    public func refreshServices() async {
+    private func performServicesRefresh() async {
         guard let api, let person else { return }
+        let gen = generation
         do {
-            services = try await api.trackableServices(personID: person.id).sorted {
+            let list = try await api.trackableServices(personID: person.id).sorted {
                 ($0.clientName, $0.projectName, $0.name) < ($1.clientName, $1.projectName, $1.name)
             }
+            guard person == self.person else { return }
+            services = list
             servicesLoadedAt = clock()
             resolveFavourites()
         } catch {
+            guard gen == generation else { return }
             handle(error)
         }
     }
@@ -239,7 +324,7 @@ public final class TimeStore: ObservableObject {
     }
 
     private func setTimer(_ newTimer: RunningTimer?) {
-        if let newTimer, newTimer.id != timer?.id || timer == nil {
+        if let newTimer, newTimer.id != timer?.id {
             timerBaseMinutes = (entries.first { $0.id == newTimer.timeEntryID } ?? newTimer.entry)?.minutes ?? 0
         }
         timer = newTimer
@@ -278,146 +363,213 @@ public final class TimeStore: ObservableObject {
 
     /// Starts `service`. Continues `preferred` (or today's unlocked entry on the service) when possible.
     public func start(_ service: Service, continuing preferred: TimeEntry? = nil) async {
-        guard let api, let person else { return }
-        if isRunning { await stop() }
-        now = clock()
-        let startedAt = now
-        let existing = (preferred.flatMap { $0.day == today && !$0.isLocked ? $0 : nil })
-            ?? entries.first { $0.day == today && $0.service.id == service.id && !$0.isLocked }
+        guard api != nil, person != nil else { return }
+        // A second click on what already runs does nothing (for example, a double click).
+        if let running = runningEntry, running.service.id == service.id, preferred == nil || preferred?.id == running.id {
+            return
+        }
+        let startedAt = advanceClock()
+        let previous = timer.map { localStop($0, at: startedAt) }
+
+        let today = Day(startedAt)
+        let existing = (preferred.flatMap { $0.day == today && !$0.isLocked && !$0.isPending ? $0 : nil })
+            ?? entries.first { $0.day == today && $0.service.id == service.id && !$0.isLocked && !$0.isPending }
         settings.lastService = service
 
         // Show the timer at once.
-        let placeholder = existing ?? TimeEntry(id: "pending-entry", day: today, minutes: 0, note: "", service: service)
+        let actionID = UUID()
+        let placeholderID = Self.placeholderPrefix + actionID.uuidString
+        let placeholder = existing
+            ?? TimeEntry(id: Self.placeholderPrefix + "entry", day: today, minutes: 0, note: "", service: service)
+        generation += 1
         timerBaseMinutes = placeholder.minutes
-        timer = RunningTimer(id: "pending", startedAt: startedAt, timeEntryID: placeholder.id, entry: placeholder)
+        timer = RunningTimer(id: placeholderID, startedAt: startedAt, timeEntryID: placeholder.id, entry: placeholder)
 
+        await serial { [weak self] in
+            guard let self else { return }
+            if let previous { await self.performStop(previous, at: startedAt, refreshAfter: false) }
+            await self.performStart(actionID, service: service, existing: existing, at: startedAt)
+        }
+    }
+
+    private func performStart(_ actionID: UUID, service: Service, existing: TimeEntry?, at startedAt: Date) async {
+        guard let api, let person else { return }
+        let placeholderID = Self.placeholderPrefix + actionID.uuidString
+        var entry = existing
         do {
-            let entry: TimeEntry
-            if let existing {
-                entry = existing
-            } else {
-                entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id, day: today, minutes: 0, note: "")
-                entries.append(entry)
+            if entry == nil {
+                let created = try await api.createTimeEntry(personID: person.id, serviceID: service.id,
+                                                            day: Day(startedAt), minutes: 0, note: "")
+                entries.append(created)
+                entry = created
             }
-            var started = try await api.startTimer(timeEntryID: entry.id)
+            var started = try await api.startTimer(timeEntryID: entry!.id)
             if started.entry == nil { started.entry = entry }
-            timerBaseMinutes = entry.minutes
-            timer = started
+            startedTimers[actionID] = started
+            if timer?.id == placeholderID {
+                timerBaseMinutes = entry!.minutes
+                timer = started
+            }
             lastError = nil
         } catch ProductiveError.offline {
             isOffline = true
-            pending.append(.start(service: service, at: startedAt))
+            pending.append(.start(id: actionID, service: service, at: startedAt,
+                                  entryID: entry?.id, baseMinutes: entry?.minutes ?? 0))
         } catch {
-            timer = nil
+            if timer?.id == placeholderID { timer = nil }
             handle(error)
         }
     }
 
     public func stop() async {
         guard let running = timer else { return }
-        now = clock()
-        let stoppedAt = now
-        let base = timerBaseMinutes
-        let finalMinutes = runningSeconds / 60
+        let stoppedAt = advanceClock()
+        let snapshot = localStop(running, at: stoppedAt)
+        await serial { [weak self] in await self?.performStop(snapshot, at: stoppedAt, refreshAfter: true) }
+    }
 
-        // Show the stop at once.
+    /// Shows a stop at once and returns what `performStop` needs.
+    private func localStop(_ running: RunningTimer, at stoppedAt: Date) -> StopSnapshot {
+        let index = entries.firstIndex { $0.id == running.timeEntryID }
+        let snapshot = StopSnapshot(timer: running, baseMinutes: timerBaseMinutes,
+                                    previousMinutes: index.map { entries[$0].minutes })
+        generation += 1
         timer = nil
-        if let i = entries.firstIndex(where: { $0.id == running.timeEntryID }) { entries[i].minutes = finalMinutes }
+        if let index { entries[index].minutes = timerBaseMinutes + Self.minutes(from: running.startedAt, to: stoppedAt) }
+        return snapshot
+    }
 
-        if running.id == "pending" {
-            // The start never reached Productive: replace it with one logged block.
-            if let i = pending.lastIndex(where: { if case .start = $0 { return true }; return false }),
-               case .start(let service, let at) = pending[i] {
-                pending.remove(at: i)
-                let minutes = Int(stoppedAt.timeIntervalSince(at)) / 60
-                pending.append(.log(service: service, day: Day(at), minutes: minutes))
+    /// Runs on the serial queue only.
+    private func performStop(_ snapshot: StopSnapshot, at stoppedAt: Date, refreshAfter: Bool) async {
+        guard let api else { return }
+        var target = snapshot.timer
+
+        if target.id.hasPrefix(Self.placeholderPrefix), let actionID = UUID(uuidString: String(target.id.dropFirst(Self.placeholderPrefix.count))) {
+            if let i = pending.firstIndex(where: { $0.id == actionID }),
+               case .start(_, let service, let at, let entryID, let base) = pending[i] {
+                // The start never reached Productive: log the whole block instead.
+                pending[i] = .log(id: actionID, service: service, day: Day(at), entryID: entryID,
+                                  baseMinutes: base, minutes: Self.minutes(from: at, to: stoppedAt))
+                return
             }
-            return
+            guard let real = startedTimers.removeValue(forKey: actionID) else { return } // The start failed.
+            target = real
         }
 
-        guard let api else { return }
         do {
-            _ = try await api.stopTimer(id: running.id)
-            await refresh()
+            _ = try await api.stopTimer(id: target.id)
+            if refreshAfter { await performRefresh() }
         } catch ProductiveError.offline {
             isOffline = true
-            pending.append(.stop(timerID: running.id, entryID: running.timeEntryID,
-                                 startedAt: running.startedAt, baseMinutes: base, at: stoppedAt))
+            pending.append(.stop(id: UUID(), timerID: target.id, entryID: target.timeEntryID,
+                                 startedAt: target.startedAt, baseMinutes: snapshot.baseMinutes, at: stoppedAt))
         } catch {
-            setTimer(running)
+            // Undo the local stop, unless the user started something else in the meantime.
+            if timer == nil {
+                if let old = snapshot.previousMinutes, let i = entries.firstIndex(where: { $0.id == target.timeEntryID }) {
+                    entries[i].minutes = old
+                }
+                timerBaseMinutes = snapshot.baseMinutes
+                timer = target
+            }
             handle(error)
         }
     }
 
-    private func flushPending() async throws {
-        guard let api, let person else { return }
+    /// Runs on the serial queue only (inside `performRefresh`).
+    private func flushPending(api: ProductiveAPI, person: Person) async throws {
         while let action = pending.first {
             switch action {
-            case .start(let service, let at):
-                let gap = max(0, Int(clock().timeIntervalSince(at)) / 60)
-                let day = Day(at)
+            case .start(let id, let service, let at, let entryID, let base):
+                let gap = Self.minutes(from: at, to: clock())
                 let entry: TimeEntry
-                if let existing = entries.first(where: { $0.day == day && $0.service.id == service.id && !$0.isLocked }) {
-                    entry = try await api.updateTimeEntry(id: existing.id, minutes: existing.minutes + gap, note: nil)
+                if let entryID {
+                    entry = try await api.updateTimeEntry(id: entryID, minutes: base + gap, note: nil)
                 } else {
-                    entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id, day: day, minutes: gap, note: "")
+                    entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id,
+                                                          day: Day(at), minutes: gap, note: "")
+                    // A retry must continue this entry, not create a second one.
+                    replacePending(id, with: .start(id: id, service: service, at: at, entryID: entry.id, baseMinutes: 0))
                 }
-                _ = try await api.startTimer(timeEntryID: entry.id)
-            case .stop(let timerID, let entryID, let startedAt, let base, let at):
+                startedTimers[id] = try await api.startTimer(timeEntryID: entry.id)
+
+            case .stop(_, let timerID, let entryID, let startedAt, let base, let at):
                 do { _ = try await api.stopTimer(id: timerID) }
                 catch let e as ProductiveError where e.isNetwork { throw e }
                 catch { /* The timer was already stopped somewhere else. */ }
-                let minutes = base + max(0, Int(at.timeIntervalSince(startedAt)) / 60)
-                _ = try await api.updateTimeEntry(id: entryID, minutes: minutes, note: nil)
-            case .log(let service, let day, let minutes):
-                if let existing = entries.first(where: { $0.day == day && $0.service.id == service.id && !$0.isLocked }) {
-                    _ = try await api.updateTimeEntry(id: existing.id, minutes: existing.minutes + minutes, note: nil)
+                _ = try await api.updateTimeEntry(id: entryID, minutes: base + Self.minutes(from: startedAt, to: at), note: nil)
+
+            case .log(let id, let service, let day, let entryID, let base, let minutes):
+                if let entryID {
+                    _ = try await api.updateTimeEntry(id: entryID, minutes: base + minutes, note: nil)
                 } else {
-                    _ = try await api.createTimeEntry(personID: person.id, serviceID: service.id, day: day, minutes: minutes, note: "")
+                    let entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id,
+                                                              day: day, minutes: minutes, note: "")
+                    replacePending(id, with: .log(id: id, service: service, day: day, entryID: entry.id,
+                                                  baseMinutes: 0, minutes: minutes))
                 }
             }
-            pending.removeFirst()
+            pending.removeAll { $0.id == action.id }
         }
+    }
+
+    private func replacePending(_ id: UUID, with action: PendingAction) {
+        if let i = pending.firstIndex(where: { $0.id == id }) { pending[i] = action }
+    }
+
+    private static func minutes(from start: Date, to end: Date) -> Int {
+        max(0, Int(end.timeIntervalSince(start)) / 60)
     }
 
     // MARK: - Entries
 
     public func addEntry(service: Service, day: Day, minutes: Int, note: String) async -> Bool {
-        guard let api, let person else { return false }
-        do {
-            let entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id, day: day, minutes: minutes, note: note)
-            entries.append(entry)
-            return true
-        } catch {
-            handle(error)
-            return false
+        generation += 1
+        return await serial { [weak self] in
+            guard let self, let api = self.api, let person = self.person else { return false }
+            do {
+                let entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id, day: day, minutes: minutes, note: note)
+                self.entries.append(entry)
+                return true
+            } catch {
+                self.handle(error)
+                return false
+            }
         }
     }
 
-    /// `minutes` is ignored for the running entry: the timer owns its time.
+    /// `minutes: nil` keeps the time. `minutes` is ignored for the running entry: the timer owns its time.
     public func updateEntry(_ entry: TimeEntry, minutes: Int?, note: String?) async -> Bool {
-        guard let api, !entry.isLocked else { return false }
-        let isRunningEntry = timer?.timeEntryID == entry.id
-        do {
-            let updated = try await api.updateTimeEntry(id: entry.id, minutes: isRunningEntry ? nil : minutes, note: note)
-            if let i = entries.firstIndex(where: { $0.id == entry.id }) { entries[i] = updated }
-            return true
-        } catch {
-            handle(error)
-            return false
+        guard !entry.isLocked, !entry.isPending else { return false }
+        generation += 1
+        return await serial { [weak self] in
+            guard let self, let api = self.api else { return false }
+            let isRunningEntry = self.timer?.timeEntryID == entry.id
+            do {
+                let updated = try await api.updateTimeEntry(id: entry.id, minutes: isRunningEntry ? nil : minutes, note: note)
+                if let i = self.entries.firstIndex(where: { $0.id == entry.id }) { self.entries[i] = updated }
+                return true
+            } catch {
+                self.handle(error)
+                return false
+            }
         }
     }
 
     public func deleteEntry(_ entry: TimeEntry) async -> Bool {
-        guard let api, !entry.isLocked else { return false }
+        guard !entry.isLocked, !entry.isPending else { return false }
         if timer?.timeEntryID == entry.id { await stop() }
-        do {
-            try await api.deleteTimeEntry(id: entry.id)
-            entries.removeAll { $0.id == entry.id }
-            return true
-        } catch {
-            handle(error)
-            return false
+        generation += 1
+        return await serial { [weak self] in
+            guard let self, let api = self.api else { return false }
+            do {
+                try await api.deleteTimeEntry(id: entry.id)
+                self.entries.removeAll { $0.id == entry.id }
+                return true
+            } catch {
+                self.handle(error)
+                return false
+            }
         }
     }
 
@@ -447,6 +599,7 @@ public final class TimeStore: ObservableObject {
         settings.firstWeekday = day
         firstWeekday = day
         weekDays = Week.days(containing: selectedDay, firstWeekday: day)
+        Task { await refresh() }
     }
 
     // MARK: - Favourites
@@ -477,13 +630,18 @@ public final class TimeStore: ObservableObject {
     /// Accepts the proposed service for a favourite whose budget closed.
     public func acceptReplacement(for fav: Favourite) {
         guard let new = replacements[fav.serviceID], let i = favourites.firstIndex(of: fav) else { return }
-        favourites[i] = Favourite(service: new)
+        if isFavourite(new) {
+            favourites.remove(at: i) // The new budget is already a favourite: drop the old one.
+        } else {
+            favourites[i] = Favourite(service: new)
+        }
         replacements[fav.serviceID] = nil
         if settings.lastService?.id == fav.serviceID { settings.lastService = new }
         saveFavourites()
     }
 
-    /// The service to start for a stored service: itself, or the confirmed replacement.
+    /// The current copy of a stored service (fresh labels), or the stored service itself.
+    /// A replacement for a closed budget needs the user's confirmation, so it is not used here.
     public func resolvedService(for service: Service) -> Service {
         services.first { $0.id == service.id } ?? service
     }

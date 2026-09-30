@@ -15,6 +15,8 @@ public enum ProductiveError: Error, LocalizedError, Equatable {
     case unauthorized
     case rateLimited
     case offline
+    /// A network error where the request may have reached Productive (for example, a timeout on a POST).
+    case transport(String)
     case http(status: Int, message: String)
     case decoding(String)
 
@@ -24,6 +26,7 @@ public enum ProductiveError: Error, LocalizedError, Equatable {
         case .unauthorized: return "Token not valid. Check the token and the organisation ID."
         case .rateLimited: return "Productive rate limit reached. Try again soon."
         case .offline: return "No connection to Productive."
+        case .transport(let detail): return "Network error (\(detail)). Refresh to see what Productive saved."
         case .http(let status, let message): return "Productive error \(status): \(message)"
         case .decoding(let detail): return "Unexpected response from Productive (\(detail))."
         }
@@ -55,7 +58,10 @@ public final class ProductiveClient: ProductiveAPI, @unchecked Sendable {
     static let serviceInclude = "deal,deal.project,deal.company"
     static let entryInclude = "service,service.deal,service.deal.project,service.deal.company"
 
-    public init(config: ProductiveConfig, session: URLSession = .shared,
+    /// Ephemeral: no response cache on disk.
+    public static let defaultSession = URLSession(configuration: .ephemeral)
+
+    public init(config: ProductiveConfig, session: URLSession = ProductiveClient.defaultSession,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1e9)) }) {
         self.config = config
         self.session = session
@@ -206,7 +212,7 @@ public final class ProductiveClient: ProductiveAPI, @unchecked Sendable {
             do {
                 (data, response) = try await session.data(for: req)
             } catch {
-                throw ProductiveError.offline
+                throw Self.map(error, method: method)
             }
             guard let http = response as? HTTPURLResponse else { throw ProductiveError.decoding("no HTTP response") }
 
@@ -228,6 +234,23 @@ public final class ProductiveClient: ProductiveAPI, @unchecked Sendable {
             }
         }
         throw ProductiveError.rateLimited
+    }
+
+    /// Only errors where the request surely did not reach Productive count as offline,
+    /// because offline actions are queued and sent again.
+    static func map(_ error: Error, method: String) -> ProductiveError {
+        guard let urlError = error as? URLError else { return .transport(error.localizedDescription) }
+        switch urlError.code {
+        case .notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost,
+             .dnsLookupFailed, .internationalRoamingOff, .dataNotAllowed:
+            // `networkConnectionLost` can happen after a POST was sent; only treat it as offline for reads.
+            if urlError.code == .networkConnectionLost && method != "GET" { return .transport(urlError.localizedDescription) }
+            return .offline
+        case .timedOut where method == "GET":
+            return .offline
+        default:
+            return .transport(urlError.localizedDescription)
+        }
     }
 
     static func errorMessage(_ data: Data) -> String {

@@ -178,7 +178,13 @@ final class TimeStoreTests: XCTestCase {
         clock = clock.addingTimeInterval(25 * 60)
         await store.stop()
         XCTAssertFalse(store.isRunning)
-        XCTAssertEqual(store.pending, [.log(service: cro, day: Day(clock), minutes: 25)])
+        guard case .log(_, let service, let day, let entryID, _, let minutes)? = store.pending.first, store.pending.count == 1 else {
+            return XCTFail("expected one .log, got \(store.pending)")
+        }
+        XCTAssertEqual(service, cro)
+        XCTAssertEqual(day, Day(clock))
+        XCTAssertNil(entryID)
+        XCTAssertEqual(minutes, 25)
 
         api.failure = nil
         await store.refresh()

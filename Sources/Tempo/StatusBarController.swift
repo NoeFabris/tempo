@@ -10,23 +10,40 @@ final class Navigator: ObservableObject {
     enum Screen: Equatable {
         case main
         case picker(PickerMode)
-        case add(Service?)
-        case edit(TimeEntry)
+        /// The manual entry form. Its values live in `draft`, so they survive a trip to the picker.
+        case add
+        /// Edit the entry with this id. The form reads the current entry from the store.
+        case edit(String)
         case settings
     }
 
+    struct EntryDraft: Equatable {
+        var service: Service?
+        var time = ""
+        var note = ""
+    }
+
     @Published var screen: Screen = .main
+    @Published var draft = EntryDraft()
+
+    func startAdd(service: Service?) {
+        draft = EntryDraft(service: service)
+        screen = .add
+    }
 }
 
 /// The menu bar item `[ ▶ | 0:45 ]`: the icon zone starts or stops, the time zone opens the popup.
 @MainActor
-final class StatusBarController: NSObject {
+final class StatusBarController: NSObject, NSPopoverDelegate {
     private let store: TimeStore
     private let nav = Navigator()
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
     private var cancellables: Set<AnyCancellable> = []
     private var lastRender = ""
+    /// A click on the status item first closes a transient popover (on mouse down), then arrives
+    /// here (on mouse up). Without this guard, that click would open the popover again.
+    private var popoverClosedAt = Date.distantPast
 
     private static let iconSize = NSSize(width: 20, height: 16)
     /// Clicks left of this x (in button coordinates) hit the ▶ / ■ zone.
@@ -37,6 +54,7 @@ final class StatusBarController: NSObject {
         super.init()
 
         popover.behavior = .transient
+        popover.delegate = self
         popover.animates = false
         popover.contentSize = NSSize(width: 340, height: 520)
         popover.contentViewController = NSHostingController(
@@ -78,7 +96,15 @@ final class StatusBarController: NSObject {
     }
 
     private func togglePopover() {
-        popover.isShown ? popover.performClose(nil) : showPopover()
+        if popover.isShown {
+            popover.performClose(nil)
+        } else if Date().timeIntervalSince(popoverClosedAt) > 0.3 {
+            showPopover()
+        }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        popoverClosedAt = Date()
     }
 
     func showPopover(_ screen: Navigator.Screen = .main) {

@@ -226,7 +226,7 @@ struct DayEntriesView: View {
                             .padding(.vertical, 18)
                     }
                     ForEach(list) { entry in EntryRow(entry: entry) }
-                    Button { nav.screen = .add(store.lastService) } label: {
+                    Button { nav.startAdd(service: store.lastService) } label: {
                         Label("Add entry", systemImage: "plus")
                             .font(Brand.font(12, .semibold))
                             .foregroundStyle(Brand.violet)
@@ -279,11 +279,14 @@ struct EntryRow: View {
                 .font(Brand.digits(13, isRunning ? .bold : .medium))
                 .foregroundStyle(isRunning ? Brand.violet : Brand.text)
 
-            if entry.isLocked {
+            if entry.isPending {
+                Image(systemName: "icloud.slash").font(.system(size: 10)).foregroundStyle(Brand.secondary)
+                    .frame(width: 24).help("Not in Productive yet. It syncs when the connection is back.")
+            } else if entry.isLocked {
                 Image(systemName: "lock.fill").font(.system(size: 10)).foregroundStyle(Brand.secondary)
                     .frame(width: 24).help("Approved or invoiced: this entry cannot change")
             } else {
-                IconButton(systemName: "pencil", help: "Edit") { nav.screen = .edit(entry) }
+                IconButton(systemName: "pencil", help: "Edit") { nav.screen = .edit(entry.id) }
                 IconButton(systemName: "trash", help: "Delete") { confirmDelete = true }
             }
         }

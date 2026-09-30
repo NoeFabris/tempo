@@ -13,8 +13,8 @@ struct PopoverRootView: View {
                 switch nav.screen {
                 case .main: MainView()
                 case .picker(let mode): ServicePickerView(mode: mode)
-                case .add(let service): EntryFormView(entry: nil, service: service)
-                case .edit(let entry): EntryFormView(entry: entry, service: entry.service)
+                case .add: EntryFormView(entryID: nil)
+                case .edit(let id): EntryFormView(entryID: id)
                 case .settings: SettingsView()
                 }
             }
