@@ -83,12 +83,22 @@ struct IconButton: View {
 
 struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        StyledPrimary(configuration: configuration)
+    }
+
+    private struct StyledPrimary: View {
+        let configuration: Configuration
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
             .font(Brand.font(13, .semibold))
             .foregroundStyle(Brand.onViolet)
             .padding(.horizontal, 14)
             .padding(.vertical, 7)
             .background(RoundedRectangle(cornerRadius: 8).fill(Brand.violet.opacity(configuration.isPressed ? 0.8 : 1)))
+            .opacity(isEnabled ? 1 : 0.4)
+        }
     }
 }
 
