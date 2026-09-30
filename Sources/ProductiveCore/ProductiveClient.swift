@@ -174,7 +174,11 @@ public final class ProductiveClient: ProductiveAPI, @unchecked Sendable {
             "attributes": [String: Any](),
             "relationships": ["time_entry": ["data": ["type": "time_entries", "id": timeEntryID]]],
         ]]
-        return try await timer(from: send("POST", "timers", body: body))
+        let started = try await timer(from: send("POST", "timers", body: body))
+        // Productive does not return the time_entry link in this response.
+        guard started.timeEntryID.isEmpty else { return started }
+        return RunningTimer(id: started.id, startedAt: started.startedAt, stoppedAt: started.stoppedAt,
+                            timeEntryID: timeEntryID, entry: started.entry)
     }
 
     public func stopTimer(id: String) async throws -> RunningTimer {

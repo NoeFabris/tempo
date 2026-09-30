@@ -67,6 +67,25 @@ public struct Service: Identifiable, Equatable, Hashable, Codable, Sendable {
     }
 }
 
+/// The Jira issue that an entry was tracked on (Productive's Jira integration).
+public struct JiraLink: Equatable, Sendable {
+    public let key: String
+    public let summary: String
+    public let url: URL?
+
+    public init(key: String, summary: String, url: URL?) {
+        self.key = key
+        self.summary = summary
+        self.url = url
+    }
+
+    /// The experiment code in the summary: "WT E97 Checkout Test 1" → "E97".
+    public var experimentCode: String? {
+        guard let range = summary.range(of: #"\bE\d{1,4}\b"#, options: .regularExpression) else { return nil }
+        return String(summary[range])
+    }
+}
+
 public struct TimeEntry: Identifiable, Equatable, Sendable {
     public let id: String
     public var day: Day
@@ -76,14 +95,16 @@ public struct TimeEntry: Identifiable, Equatable, Sendable {
     public var service: Service
     /// Invoiced entries cannot change.
     public var isLocked: Bool
+    public var jira: JiraLink?
 
-    public init(id: String, day: Day, minutes: Int, note: String, service: Service, isLocked: Bool = false) {
+    public init(id: String, day: Day, minutes: Int, note: String, service: Service, isLocked: Bool = false, jira: JiraLink? = nil) {
         self.id = id
         self.day = day
         self.minutes = minutes
         self.note = note
         self.service = service
         self.isLocked = isLocked
+        self.jira = jira
     }
 
     /// A local placeholder for a start that has not reached Productive yet.

@@ -58,6 +58,10 @@ struct EntryFormView: View {
             .buttonStyle(.plain)
             .disabled(isRunning || isLocked)
 
+            if let entry, entry.jira != nil {
+                EntryDetailLine(entry: entry)
+            }
+
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     label("Date")

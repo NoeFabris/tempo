@@ -258,6 +258,20 @@ final class TimeStoreTests: XCTestCase {
         XCTAssertEqual(api.entries[0].note, "QA")
     }
 
+    func testJiraEntryGetsExperimentCodeNoteOnce() async {
+        let jira = JiraLink(key: "WT-558", summary: "WT E97 Checkout Test 1", url: nil)
+        api.entries = [TimeEntry(id: "501", day: Day(Date()), minutes: 30, note: "", service: cro, jira: jira),
+                       TimeEntry(id: "502", day: Day(Date()), minutes: 10, note: "Kept", service: cro, jira: jira),
+                       TimeEntry(id: "503", day: Day(Date()), minutes: 10, note: "", service: cro, isLocked: true, jira: jira)]
+        let store = await connectedStore()
+        XCTAssertEqual(store.entries.first { $0.id == "501" }?.note, "E97")
+        XCTAssertEqual(store.entries.first { $0.id == "501" }?.jira, jira, "the Jira link stays after the update")
+        XCTAssertEqual(api.entries.first { $0.id == "502" }?.note, "Kept")
+        XCTAssertEqual(api.entries.first { $0.id == "503" }?.note, "")
+        await store.refresh()
+        XCTAssertEqual(api.calls.filter { $0.hasPrefix("update") }.count, 1)
+    }
+
     func testFavouriteReplacementAfterBudgetChange() async {
         settings.favourites = [Favourite(service: Service(id: "100", name: "CRO Development", clientName: "Northwind Retail"))]
         let store = await connectedStore()

@@ -78,6 +78,8 @@ public final class TimeStore: ObservableObject {
     /// Real timers for optimistic starts, keyed by the start's action id.
     private var startedTimers: [UUID: RunningTimer] = [:]
     private static let placeholderPrefix = "pending-"
+    /// Entries that already got an automatic note (or failed to), so each gets one try per launch.
+    private var autoNoted: Set<String> = []
 
     public init(settings: SettingsStore = SettingsStore(),
                 tokenStore: TokenStoring = KeychainStore(),
@@ -288,12 +290,29 @@ public final class TimeStore: ObservableObject {
             setTimer(running)
             isOffline = false
             lastError = nil
+            await fillJiraNotes(api: api)
             if servicesLoadedAt.map({ now.timeIntervalSince($0) > 6 * 3600 }) ?? true {
                 await performServicesRefresh()
             }
         } catch {
             guard gen == generation else { return }
             handle(error)
+        }
+    }
+
+    /// Entries tracked from Jira have no note. Set the note to the experiment code ("E97").
+    private func fillJiraNotes(api: ProductiveAPI) async {
+        let candidates = entries.filter {
+            $0.note.isEmpty && !$0.isLocked && !$0.isPending && $0.jira?.experimentCode != nil && !autoNoted.contains($0.id)
+        }
+        for entry in candidates {
+            autoNoted.insert(entry.id)
+            guard let code = entry.jira?.experimentCode,
+                  let updated = try? await api.updateTimeEntry(id: entry.id, changes: EntryChanges(note: code)),
+                  let i = entries.firstIndex(where: { $0.id == entry.id }) else { continue }
+            var merged = updated
+            if merged.jira == nil { merged.jira = entry.jira }
+            entries[i] = merged
         }
     }
 

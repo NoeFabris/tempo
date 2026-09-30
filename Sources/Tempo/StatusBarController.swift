@@ -47,12 +47,16 @@ final class Navigator: ObservableObject {
     }
 }
 
-/// The menu bar item `[ ▶ | 0:45 ]`: the icon zone starts or stops, the time zone opens the popup.
+/// Two menu bar items next to each other: `[▶]` starts or stops, `[0:45]` opens the popup.
+/// Two items (not one item with two click zones) because the click position in a status item
+/// is not reliable on all macOS versions.
 @MainActor
 final class StatusBarController: NSObject, NSPopoverDelegate {
     private let store: TimeStore
     private let nav = Navigator()
-    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    // macOS puts a new status item to the left of the earlier ones: create the time first.
+    private let timeItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let playItem = NSStatusBar.system.statusItem(withLength: 26)
     private let popover = NSPopover()
     private var cancellables: Set<AnyCancellable> = []
     private var lastRender = ""
@@ -61,8 +65,6 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     private var popoverClosedAt = Date.distantPast
 
     private static let iconSize = NSSize(width: 20, height: 16)
-    /// Clicks left of this x (in button coordinates) hit the ▶ / ■ zone.
-    private var iconZoneWidth: CGFloat { Self.iconSize.width + 4 }
 
     init(store: TimeStore) {
         self.store = store
@@ -76,12 +78,19 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             rootView: PopoverRootView().environmentObject(store).environmentObject(nav)
         )
 
-        if let button = item.button {
+        timeItem.autosaveName = "TempoTime"
+        playItem.autosaveName = "TempoPlay"
+        if let button = timeItem.button {
             button.target = self
-            button.action = #selector(clicked(_:))
+            button.action = #selector(timeClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            button.imagePosition = .imageLeft
-            button.setAccessibilityLabel("Tempo timer")
+            button.setAccessibilityLabel("Tempo: open the timesheet")
+        }
+        if let button = playItem.button {
+            button.target = self
+            button.action = #selector(playClicked(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            button.imagePosition = .imageOnly
         }
 
         store.objectWillChange
@@ -93,21 +102,19 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
 
     // MARK: Clicks
 
-    @objc private func clicked(_ sender: NSStatusBarButton) {
-        guard let event = NSApp.currentEvent else { return }
-        let point = sender.convert(event.locationInWindow, from: nil)
-        if event.type == .rightMouseUp || point.x > iconZoneWidth || store.phase == .setup {
+    @objc private func playClicked(_ sender: NSStatusBarButton) {
+        if NSApp.currentEvent?.type == .rightMouseUp || store.phase == .setup {
             togglePopover()
-        } else {
-            toggleTimer()
+            return
         }
-    }
-
-    private func toggleTimer() {
         Task {
             let handled = await store.toggle()
             if !handled { showPopover(.picker(.start)) }
         }
+    }
+
+    @objc private func timeClicked(_ sender: NSStatusBarButton) {
+        togglePopover()
     }
 
     private func togglePopover() {
@@ -123,7 +130,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     }
 
     func showPopover(_ screen: Navigator.Screen = .main) {
-        guard let button = item.button else { return }
+        guard let button = timeItem.button else { return }
         nav.screen = screen
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -134,27 +141,35 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     // MARK: Drawing
 
     private func render() {
-        guard let button = item.button else { return }
         let running = store.isRunning
-        let text = store.phase == .setup ? "Set up" : TimeFormat.hm(store.menuBarMinutes)
+        let text = store.phase == .setup ? "Set up Tempo" : TimeFormat.hm(store.menuBarMinutes)
         let warn = store.isOffline || store.lastError != nil
-        let key = "\(running)|\(text)|\(warn)"
+        let key = "\(running)|\(text)|\(warn)|\(store.phase)"
         guard key != lastRender else { return }
         lastRender = key
 
-        button.image = Self.icon(running: running)
-        let title = NSMutableAttributedString(
-            string: " " + text,
-            attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)]
-        )
-        if warn {
-            title.append(NSAttributedString(string: " ⚠︎", attributes: [
-                .font: NSFont.systemFont(ofSize: 11),
-                .foregroundColor: NSColor.secondaryLabelColor,
-            ]))
+        playItem.isVisible = store.phase == .ready
+        if let button = playItem.button {
+            button.image = Self.icon(running: running)
+            button.setAccessibilityLabel(running ? "Stop the timer" : "Start the timer")
+            button.toolTip = running
+                ? store.runningService.map { "Stop \($0.name) — \($0.context)" }
+                : store.lastService.map { "Start \($0.name) — \($0.context)" } ?? "Pick a service to start"
         }
-        button.attributedTitle = title
-        button.toolTip = running ? store.runningService.map { "\($0.name) — \($0.context)" } : "Click ▶ to start, click the time to open"
+        if let button = timeItem.button {
+            let title = NSMutableAttributedString(
+                string: text,
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)]
+            )
+            if warn {
+                title.append(NSAttributedString(string: " ⚠︎", attributes: [
+                    .font: NSFont.systemFont(ofSize: 11),
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                ]))
+            }
+            button.attributedTitle = title
+            button.toolTip = "Open the Tempo timesheet"
+        }
     }
 
     /// A rounded box with the play or stop glyph cut out, like the Harvest menu bar item.

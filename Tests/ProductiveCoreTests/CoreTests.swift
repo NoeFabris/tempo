@@ -27,6 +27,21 @@ final class MappingTests: XCTestCase {
         XCTAssertFalse(entries[1].isLocked, "approved entries can still be editable")
         XCTAssertEqual(entries[1].service.context, "")
         XCTAssertEqual(doc.totalPages, 1)
+
+        XCTAssertNil(first.jira)
+        let jira = try XCTUnwrap(entries[1].jira)
+        XCTAssertEqual(jira.key, "WT-558")
+        XCTAssertEqual(jira.url?.absoluteString, "https://example.atlassian.net/browse/WT-558")
+        XCTAssertEqual(jira.experimentCode, "E97")
+    }
+
+    func testExperimentCode() {
+        func code(_ s: String) -> String? { JiraLink(key: "X-1", summary: s, url: nil).experimentCode }
+        XCTAssertEqual(code("NWR E83 Sticky Product Gallery"), "E83")
+        XCTAssertEqual(code("TSP E22 - QA"), "E22")
+        XCTAssertNil(code("Sticky bar issues"))
+        XCTAssertNil(code("EMEA rollout E"), "no digits")
+        XCTAssertNil(code("SE97 pricing"), "not a separate word")
     }
 
     func testTimersMap() throws {

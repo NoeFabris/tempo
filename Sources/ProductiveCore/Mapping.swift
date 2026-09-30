@@ -29,8 +29,16 @@ public enum Mapping {
             minutes: r[attribute: "time"]?.int ?? 0,
             note: plainText(r[attribute: "note"]?.string ?? ""),
             service: service,
-            isLocked: locked
+            isLocked: locked,
+            jira: jira(r)
         )
+    }
+
+    static func jira(_ r: Resource) -> JiraLink? {
+        guard let key = r[attribute: "jira_issue_id"]?.string, !key.isEmpty else { return nil }
+        let site = r[attribute: "jira_organization"]?.string?.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        let url = site.flatMap { URL(string: "\($0)/browse/\(key)") }
+        return JiraLink(key: key, summary: r[attribute: "jira_issue_summary"]?.string ?? "", url: url)
     }
 
     public static func timer(_ r: Resource, _ index: ResourceIndex) -> RunningTimer? {

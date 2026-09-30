@@ -89,7 +89,9 @@ private final class SampleAPI: ProductiveAPI, @unchecked Sendable {
                 list.append(TimeEntry(id: String(id), day: day, minutes: m, note: n, service: services[s], isLocked: i == 0))
             }
         }
-        list.append(TimeEntry(id: "900", day: Day(Date()), minutes: 105, note: "Variant QA", service: services[0]))
+        list.append(TimeEntry(id: "900", day: Day(Date()), minutes: 105, note: "", service: services[0],
+                              jira: JiraLink(key: "WT-558", summary: "WT E97 Checkout Test 1 — Shorter Form",
+                                             url: URL(string: "https://example.atlassian.net/browse/WT-558"))))
         list.append(TimeEntry(id: "901", day: Day(Date()), minutes: 30, note: "Client call", service: services[1]))
         return list
     }()
@@ -106,7 +108,11 @@ private final class SampleAPI: ProductiveAPI, @unchecked Sendable {
         entries.append(e)
         return e
     }
-    func updateTimeEntry(id: String, changes: EntryChanges) async throws -> TimeEntry { entries.first { $0.id == id }! }
+    func updateTimeEntry(id: String, changes: EntryChanges) async throws -> TimeEntry {
+        let i = entries.firstIndex { $0.id == id }!
+        if let note = changes.note { entries[i].note = note }
+        return entries[i]
+    }
     func deleteTimeEntry(id: String) async throws {}
     func startTimer(timeEntryID: String) async throws -> RunningTimer {
         let t = RunningTimer(id: "t1", startedAt: Date().addingTimeInterval(-(24 * 60 + 5)), timeEntryID: timeEntryID)

@@ -10,7 +10,9 @@
     },
     {
       "id": "502", "type": "time_entries",
-      "attributes": { "date": "2026-09-29", "time": 60, "note": null, "approved": true },
+      "attributes": { "date": "2026-09-29", "time": 60, "note": null, "approved": true,
+                      "jira_issue_id": "WT-558", "jira_organization": "https://example.atlassian.net/",
+                      "jira_issue_summary": "WT E97 Checkout Test 1 — Shorter Form" },
       "relationships": {
         "service": { "data": { "type": "services", "id": "9002" } },
         "task": { "data": null }

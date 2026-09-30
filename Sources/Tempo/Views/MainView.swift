@@ -36,10 +36,15 @@ struct TimerHeaderView: View {
                 Circle().fill(Brand.violet).frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(service.name).font(Brand.font(14, .semibold)).lineLimit(1)
-                    Text(service.context).font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+                    Text(service.clientName.isEmpty ? service.context : service.clientName)
+                        .font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+                    if let entry = store.runningEntry, !entry.note.isEmpty || entry.jira != nil {
+                        EntryDetailLine(entry: entry)
+                    }
                 }
+                .layoutPriority(1)
                 Spacer(minLength: 4)
-                Text(TimeFormat.hms(seconds: store.runningSeconds)).font(Brand.digits(17, .semibold))
+                Text(TimeFormat.hms(seconds: store.runningSeconds)).font(Brand.digits(15, .semibold)).fixedSize()
                 Button { Task { await store.stop() } } label: {
                     Image(systemName: "stop.fill")
                         .font(.system(size: 11, weight: .bold))
@@ -272,7 +277,12 @@ struct EntryRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.service.name).font(Brand.font(13, .semibold)).lineLimit(1)
-                Text(subtitle).font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+                Text(entry.service.clientName.isEmpty ? entry.service.context : entry.service.clientName)
+                    .font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+                    .help(entry.service.budgetName)
+                if !entry.note.isEmpty || entry.jira != nil {
+                    EntryDetailLine(entry: entry)
+                }
             }
             Spacer(minLength: 4)
             Text(TimeFormat.hm(store.liveMinutes(entry)))
@@ -300,8 +310,37 @@ struct EntryRow: View {
         }
     }
 
-    private var subtitle: String {
-        [entry.service.clientName, entry.note].filter { !$0.isEmpty }.joined(separator: " · ")
+}
+
+/// The note, then the Jira key as a link. Without a note, the Jira summary shows instead.
+struct EntryDetailLine: View {
+    let entry: TimeEntry
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let jira = entry.jira {
+                if let url = jira.url {
+                    Link(destination: url) { jiraLabel(jira) }
+                        .help("Open \(jira.key) in Jira: \(jira.summary)")
+                } else {
+                    jiraLabel(jira).help(jira.summary)
+                }
+            }
+            Text(entry.note.isEmpty ? (entry.jira?.summary ?? "") : entry.note)
+                .font(Brand.font(11))
+                .foregroundStyle(Brand.text)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+
+    private func jiraLabel(_ jira: JiraLink) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "arrow.up.right.square").font(.system(size: 9, weight: .semibold))
+            Text(jira.key).font(Brand.font(11, .semibold))
+        }
+        .foregroundStyle(Brand.violet)
+        .fixedSize()
     }
 }
 
