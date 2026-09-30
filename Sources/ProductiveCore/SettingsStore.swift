@@ -53,6 +53,8 @@ public final class SettingsStore: @unchecked Sendable {
         static let favourites = "favourites"
         static let lastService = "lastService"
         static let lastEntry = "lastEntry"
+        static let calendarLinks = "calendarLinks"
+        static let meetingServices = "meetingServices"
     }
 
     public var organizationID: String {
@@ -90,6 +92,18 @@ public final class SettingsStore: @unchecked Sendable {
     public var lastEntry: LastEntry? {
         get { decode(Key.lastEntry) }
         set { encode(newValue, Key.lastEntry) }
+    }
+
+    /// Calendar event id → the id of the entry that logged it.
+    public var calendarLinks: [String: String] {
+        get { decode(Key.calendarLinks) ?? [:] }
+        set { encode(newValue, Key.calendarLinks) }
+    }
+
+    /// Meeting series (or name) → the service used the last time.
+    public var meetingServices: [String: Service] {
+        get { decode(Key.meetingServices) ?? [:] }
+        set { encode(newValue, Key.meetingServices) }
     }
 
     private func decode<T: Decodable>(_ key: String) -> T? {

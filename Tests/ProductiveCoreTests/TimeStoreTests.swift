@@ -55,6 +55,12 @@ final class MockAPI: ProductiveAPI, @unchecked Sendable {
         return t
     }
 
+    var events: [Day: [CalendarEvent]] = [:]
+    func calendarEvents(personID: String, day: Day) async throws -> [CalendarEvent] {
+        try check("calendar \(day.iso)")
+        return events[day] ?? []
+    }
+
     func stopTimer(id: String) async throws -> RunningTimer {
         try check("stop \(id)")
         let i = timers.firstIndex { $0.id == id }!
@@ -68,8 +74,9 @@ final class MockAPI: ProductiveAPI, @unchecked Sendable {
 
 final class MemoryTokenStore: TokenStoring, @unchecked Sendable {
     var token: String?
+    var reads = 0
     init(_ token: String? = nil) { self.token = token }
-    func read() -> String? { token }
+    func read() -> String? { reads += 1; return token }
     func write(_ token: String) -> Bool { self.token = token.isEmpty ? nil : token; return true }
 }
 
@@ -91,6 +98,21 @@ final class TimeStoreTests: XCTestCase {
         let person = await store.connect(token: " tok ", organizationID: "555")
         XCTAssertEqual(person?.name, "Noe Fabris")
         return store
+    }
+
+    func testKeychainIsReadOncePerLaunch() async {
+        settings.organizationID = "555"
+        settings.person = Person(id: "77", name: "Noe Fabris")
+        let tokens = MemoryTokenStore("tok")
+        let store = TimeStore(settings: settings, tokenStore: tokens, makeAPI: { [api] _ in api! })
+        store.bootstrap()
+        XCTAssertEqual(tokens.reads, 1)
+        XCTAssertTrue(store.hasStoredToken)
+        // Settings: "Test connection" with the field left empty keeps the saved token.
+        let person = await store.connect(token: "", organizationID: "555")
+        XCTAssertEqual(person?.id, "77")
+        XCTAssertEqual(tokens.reads, 1, "no second Keychain read")
+        XCTAssertEqual(tokens.token, "tok")
     }
 
     func testSetupPhaseWithoutToken() {

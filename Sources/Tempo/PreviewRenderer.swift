@@ -120,4 +120,13 @@ private final class SampleAPI: ProductiveAPI, @unchecked Sendable {
         return t
     }
     func stopTimer(id: String) async throws -> RunningTimer { timer! }
+    func calendarEvents(personID: String, day: Day) async throws -> [CalendarEvent] {
+        let base = Calendar.current.startOfDay(for: day.date())
+        func at(_ h: Int, _ m: Int) -> Date { base.addingTimeInterval(TimeInterval(h * 3600 + m * 60)) }
+        return [
+            CalendarEvent(id: "e1", name: "Daily stand-up", start: at(9, 30), end: at(10, 0), seriesID: "daily"),
+            CalendarEvent(id: "e2", name: "Northwind Retail — test review", start: at(14, 0), end: at(15, 0), organizer: "Client"),
+            CalendarEvent(id: "e3", name: "Declined sync", start: at(16, 0), end: at(16, 30), responseStatus: "declined"),
+        ]
+    }
 }

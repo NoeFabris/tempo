@@ -15,6 +15,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installEditMenu()
         store = TimeStore()
         statusBar = StatusBarController(store: store)
+        if CommandLine.arguments.contains("--click-test") {
+            // No account load: the Keychain read can wait for the user's approval.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [statusBar] in statusBar?.runClickTest() }
+            return
+        }
         store.bootstrap()
         if store.phase == .setup {
             // The status item needs a moment to get its window before the popover can attach.

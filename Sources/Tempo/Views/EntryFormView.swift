@@ -24,7 +24,7 @@ struct EntryFormView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ScreenHeader(bold: isAdd ? "Add" : "Edit", italic: isAdd ? "time" : "entry")
+            ScreenHeader(bold: isAdd ? "Add" : "Edit", italic: isAdd ? (nav.draft.event == nil ? "time" : "meeting") : "entry")
 
             if !isAdd && entry == nil {
                 Text("This entry is no longer in Productive.")
@@ -145,7 +145,7 @@ struct EntryFormView: View {
                     day: day != original.day ? day : nil
                 ))
             } else {
-                ok = await store.addEntry(service: service, day: day, minutes: minutes ?? 0, note: draft.note)
+                ok = await store.addEntry(service: service, day: day, minutes: minutes ?? 0, note: draft.note, event: draft.event)
             }
             saving = false
             if ok {

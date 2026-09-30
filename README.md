@@ -11,6 +11,8 @@ A small macOS menu bar timer for [Productive](https://productive.io), similar to
   entries of the selected day. Edit the time and note, delete, or add a manual entry.
 - Favourites for the services you use most, and a search in all services you can track.
 - When a monthly budget closes, a favourite moves to the new budget after one confirmation.
+- Meetings from the calendar connected in Productive show under the day; + logs one, with the
+  service used last time for that meeting.
 - Native Swift. About 5 MB on disk. No web runtime.
 
 ## Install (colleagues)
@@ -28,10 +30,14 @@ The token stays in your macOS Keychain. The app sends it only to `api.productive
 Requires Xcode (Swift 6) on macOS 14 or later.
 
 ```sh
-swift test                 # unit tests
-scripts/build-app.sh       # dist/Tempo.app and dist/Tempo.zip (universal, signed ad hoc)
+scripts/make-signing-cert.sh   # once: a local signing identity, so the Keychain asks only once
+swift test                     # unit tests
+scripts/build-app.sh           # dist/Tempo.app and dist/Tempo.zip (universal)
 open dist/Tempo.app
 ```
+
+Without the local identity, builds are signed ad hoc and macOS asks for Keychain access after
+every rebuild.
 
 To sign and notarise for the whole team:
 

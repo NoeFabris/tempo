@@ -59,6 +59,8 @@ public final class TimeStore: ObservableObject {
     @Published public private(set) var now: Date
     @Published public private(set) var weeklyTargetMinutes: Int
     @Published public private(set) var firstWeekday: Int
+    /// Calendar meetings by day, loaded for the selected day.
+    @Published public private(set) var calendar: [Day: [CalendarEvent]] = [:]
 
     private let settings: SettingsStore
     private let tokenStore: TokenStoring
@@ -103,7 +105,9 @@ public final class TimeStore: ObservableObject {
     public var today: Day { Day(now) }
     public var isRunning: Bool { timer != nil }
     public var organizationID: String { settings.organizationID }
-    public var storedToken: String { tokenStore.read() ?? "" }
+    /// The token is read from the Keychain once per launch (a read can show a macOS dialog).
+    private var cachedToken: String?
+    public var hasStoredToken: Bool { !(cachedToken ?? "").isEmpty }
     public var lastService: Service? { settings.lastService }
 
     /// The entry that ▶ resumes: the last entry, when it is from today and can still change.
@@ -169,10 +173,11 @@ public final class TimeStore: ObservableObject {
     // MARK: - Lifecycle
 
     public func bootstrap() {
-        guard let token = tokenStore.read(), !token.isEmpty, !settings.organizationID.isEmpty else {
+        guard !settings.organizationID.isEmpty, let token = tokenStore.read(), !token.isEmpty else {
             phase = .setup
             return
         }
+        cachedToken = token
         api = makeAPI(ProductiveConfig(token: token, organizationID: settings.organizationID))
         person = settings.person
         phase = .ready
@@ -181,9 +186,11 @@ public final class TimeStore: ObservableObject {
     }
 
     /// Checks the token, stores it, and loads data. Returns the person on success.
+    /// An empty `token` keeps the saved token (for example, to change only the organisation ID).
     @discardableResult
     public func connect(token: String, organizationID: String) async -> Person? {
-        let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let typed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = typed.isEmpty ? (cachedToken ?? "") : typed
         let org = organizationID.trimmingCharacters(in: .whitespacesAndNewlines)
         let candidate = makeAPI(ProductiveConfig(token: token, organizationID: org))
         let me: Person
@@ -193,9 +200,12 @@ public final class TimeStore: ObservableObject {
             lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return nil
         }
-        guard tokenStore.write(token) else {
-            lastError = "Could not save the token in the Keychain."
-            return nil
+        if token != cachedToken {
+            guard tokenStore.write(token) else {
+                lastError = "Could not save the token in the Keychain."
+                return nil
+            }
+            cachedToken = token
         }
         let sameAccount = me.id == person?.id && org == settings.organizationID
         generation += 1 // Discard any refresh of the old account that is still running.
@@ -215,6 +225,7 @@ public final class TimeStore: ObservableObject {
     public func signOut() {
         generation += 1
         tokenStore.write("")
+        cachedToken = nil
         settings.person = nil
         api = nil
         person = nil
@@ -230,6 +241,7 @@ public final class TimeStore: ObservableObject {
         replacements = [:]
         pending = []
         startedTimers = [:]
+        calendar = [:]
         isOffline = false
     }
 
@@ -295,6 +307,7 @@ public final class TimeStore: ObservableObject {
             entries = entryList
             setTimer(running)
             if let entry = runningEntry, !entry.isPending { remember(entry) }
+            await loadCalendar(selectedDay, force: true)
             isOffline = false
             lastError = nil
             await fillJiraNotes(api: api)
@@ -573,19 +586,49 @@ public final class TimeStore: ObservableObject {
 
     // MARK: - Entries
 
-    public func addEntry(service: Service, day: Day, minutes: Int, note: String) async -> Bool {
+    /// Adds a manual entry. With `event`, it also remembers the meeting as logged and its service.
+    @discardableResult
+    public func addEntry(service: Service, day: Day, minutes: Int, note: String, event: CalendarEvent? = nil) async -> Bool {
         generation += 1
         return await serial { [weak self] in
             guard let self, let api = self.api, let person = self.person else { return false }
             do {
                 let entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id, day: day, minutes: minutes, note: note)
                 self.entries.append(entry)
+                if let event {
+                    self.settings.calendarLinks[event.id] = entry.id
+                    self.settings.meetingServices[event.seriesKey] = service
+                }
                 return true
             } catch {
                 self.handle(error)
                 return false
             }
         }
+    }
+
+    // MARK: - Calendar
+
+    /// The loggable meetings of `day` (loaded by `loadCalendar`).
+    public func meetings(on day: Day) -> [CalendarEvent] {
+        (calendar[day] ?? []).filter(\.isLoggable)
+    }
+
+    /// The entry that logged `event`, if it still exists.
+    public func loggedEntry(for event: CalendarEvent) -> TimeEntry? {
+        settings.calendarLinks[event.id].flatMap { id in entries.first { $0.id == id } }
+    }
+
+    /// The service used the last time for this meeting (series), with fresh labels.
+    public func rememberedService(for event: CalendarEvent) -> Service? {
+        settings.meetingServices[event.seriesKey].map(resolvedService(for:))
+    }
+
+    /// Loads the meetings of `day`. Errors are ignored: the calendar is optional.
+    public func loadCalendar(_ day: Day, force: Bool = false) async {
+        guard let api, let person, force || calendar[day] == nil else { return }
+        guard let events = try? await api.calendarEvents(personID: person.id, day: day), person == self.person else { return }
+        calendar[day] = events
     }
 
     public func updateEntry(_ entry: TimeEntry, minutes: Int?, note: String?) async -> Bool {

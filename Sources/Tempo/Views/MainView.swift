@@ -278,6 +278,12 @@ struct DayEntriesView: View {
                             .padding(.vertical, 18)
                     }
                     ForEach(list) { entry in EntryRow(entry: entry) }
+                    let meetings = store.meetings(on: store.selectedDay)
+                    if !meetings.isEmpty {
+                        SectionLabel(bold: "Calendar", italic: "")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ForEach(meetings) { MeetingRow(event: $0) }
+                    }
                     Button { nav.startAdd(service: store.lastService, day: store.selectedDay) } label: {
                         Label("Add entry", systemImage: "plus")
                             .font(Brand.font(12, .semibold))
@@ -293,6 +299,48 @@ struct DayEntriesView: View {
             }
         }
         .frame(maxHeight: .infinity)
+        .task(id: store.selectedDay) { await store.loadCalendar(store.selectedDay) }
+    }
+}
+
+/// A meeting from the connected calendar: + opens the Add form with its values filled in.
+struct MeetingRow: View {
+    @EnvironmentObject var store: TimeStore
+    @EnvironmentObject var nav: Navigator
+    let event: CalendarEvent
+
+    var body: some View {
+        let logged = store.loggedEntry(for: event)
+        HStack(spacing: 10) {
+            Image(systemName: logged == nil ? "calendar" : "checkmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(logged == nil ? Brand.secondary : Brand.violet)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(event.name).font(Brand.font(13, .semibold)).lineLimit(1)
+                Text(subtitle(logged)).font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
+            Text(TimeFormat.hm(event.minutes)).font(Brand.digits(13)).foregroundStyle(Brand.secondary).fixedSize()
+            if logged == nil {
+                IconButton(systemName: "plus", help: "Log this meeting", tint: Brand.violet) {
+                    nav.startAdd(event: event, service: store.rememberedService(for: event))
+                }
+            } else {
+                Color.clear.frame(width: 24, height: 24)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 8).stroke(Brand.separator))
+        .help(event.organizer.isEmpty ? event.name : "\(event.name) — \(event.organizer)")
+    }
+
+    private func subtitle(_ logged: TimeEntry?) -> String {
+        let time = "\(event.start.formatted(date: .omitted, time: .shortened))–\(event.end.formatted(date: .omitted, time: .shortened))"
+        guard let logged else { return time }
+        return "\(time) · logged on \(TimerHeaderView.client(logged.service))"
     }
 }
 

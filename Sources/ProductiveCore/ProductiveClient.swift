@@ -69,6 +69,12 @@ public protocol ProductiveAPI: Sendable {
     func deleteTimeEntry(id: String) async throws
     func startTimer(timeEntryID: String) async throws -> RunningTimer
     func stopTimer(id: String) async throws -> RunningTimer
+    /// Meetings on `day` from the calendar connected in Productive. Empty when none is connected.
+    func calendarEvents(personID: String, day: Day) async throws -> [CalendarEvent]
+}
+
+extension ProductiveAPI {
+    public func calendarEvents(personID: String, day: Day) async throws -> [CalendarEvent] { [] }
 }
 
 public final class ProductiveClient: ProductiveAPI, @unchecked Sendable {
@@ -189,6 +195,16 @@ public final class ProductiveClient: ProductiveAPI, @unchecked Sendable {
 
     public func stopTimer(id: String) async throws -> RunningTimer {
         try await timer(from: send("PATCH", "timers/\(id)/stop"))
+    }
+
+    /// `filter[start_date]` (one day) is the only date filter this endpoint accepts.
+    public func calendarEvents(personID: String, day: Day) async throws -> [CalendarEvent] {
+        let doc = try await send("GET", "calendar_events", query: [
+            "filter[person_id]": personID,
+            "filter[start_date]": day.iso,
+            "page[size]": "200",
+        ])
+        return doc.data.compactMap(Mapping.calendarEvent).sorted { $0.start < $1.start }
     }
 
     // MARK: - Transport

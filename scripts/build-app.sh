@@ -42,8 +42,11 @@ PLIST
 
 if [[ -n "${DEVELOPER_ID:-}" ]]; then
   codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$APP"
+elif security find-certificate -c "Tempo Local Signing" >/dev/null 2>&1; then
+  # Same signature on every build: macOS keeps the Keychain "Always Allow" (scripts/make-signing-cert.sh).
+  codesign --force --sign "Tempo Local Signing" "$APP"
 else
-  codesign --force --sign - "$APP"   # Ad hoc: colleagues must right-click > Open once.
+  codesign --force --sign - "$APP"   # Ad hoc: the Keychain asks again after each build.
 fi
 
 ditto -c -k --keepParent "$APP" dist/Tempo.zip

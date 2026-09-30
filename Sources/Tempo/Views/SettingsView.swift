@@ -29,7 +29,8 @@ struct ConnectionForm: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("API token").font(Brand.font(11, .semibold)).foregroundStyle(Brand.secondary)
-            SecureField("Paste your personal access token", text: $token).brandField()
+            SecureField(store.hasStoredToken ? "Token saved. Paste a new one to replace it." : "Paste your personal access token",
+                        text: $token).brandField()
             Text("Productive › Settings › API integrations › Generate new token (read/write).")
                 .font(Brand.font(10)).foregroundStyle(Brand.secondary)
 
@@ -42,7 +43,7 @@ struct ConnectionForm: View {
             HStack {
                 Button(testing ? "Testing…" : "Test connection") { test() }
                     .buttonStyle(PrimaryButtonStyle())
-                    .disabled(testing || token.isEmpty || organizationID.isEmpty)
+                    .disabled(testing || (token.isEmpty && !store.hasStoredToken) || organizationID.isEmpty)
                     .keyboardShortcut(.defaultAction)
                 if let message {
                     Text(message).font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(3)
@@ -51,7 +52,6 @@ struct ConnectionForm: View {
             .padding(.top, 6)
         }
         .onAppear {
-            token = store.storedToken
             organizationID = store.organizationID
             if let person = store.person { message = "Connected as \(person.name)" }
         }

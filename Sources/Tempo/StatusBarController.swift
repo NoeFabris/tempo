@@ -1,4 +1,5 @@
 import AppKit
+import os
 import Combine
 import ProductiveCore
 import SwiftUI
@@ -29,6 +30,8 @@ final class Navigator: ObservableObject {
         /// The edited entry as it was when the form opened. Only changed fields are sent.
         var original: TimeEntry?
         var originalTime = ""
+        /// The calendar meeting that this new entry logs.
+        var event: CalendarEvent?
     }
 
     @Published var screen: Screen = .main
@@ -36,6 +39,13 @@ final class Navigator: ObservableObject {
 
     func startAdd(service: Service?, day: Day) {
         draft = EntryDraft(service: service, day: day)
+        screen = .add
+    }
+
+    /// A new entry for a calendar meeting: its day, length and name, and the service used last time.
+    func startAdd(event: CalendarEvent, service: Service?) {
+        draft = EntryDraft(service: service, day: Day(event.start), time: TimeFormat.hm(event.minutes),
+                           note: event.name, event: event)
         screen = .add
     }
 
@@ -47,16 +57,15 @@ final class Navigator: ObservableObject {
     }
 }
 
-/// Two menu bar items next to each other: `[▶]` starts or stops, `[0:45]` opens the popup.
-/// Two items (not one item with two click zones) because the click position in a status item
-/// is not reliable on all macOS versions.
+/// One menu bar item, like Harvest: `[▶ 0:45]`. The ▶ is a real button inside the item, so AppKit
+/// decides which part was clicked. (Calculating the click position from the event was wrong on
+/// macOS 27, where the menu bar items are hosted by a system process.)
 @MainActor
 final class StatusBarController: NSObject, NSPopoverDelegate {
     private let store: TimeStore
     private let nav = Navigator()
-    // macOS puts a new status item to the left of the earlier ones: create the time first.
-    private let timeItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let playItem = NSStatusBar.system.statusItem(withLength: 26)
+    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let playButton = NSButton()
     private let popover = NSPopover()
     private var cancellables: Set<AnyCancellable> = []
     private var lastRender = ""
@@ -66,8 +75,17 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     /// The app that was in front before the popover opened. It gets the focus back when the popover
     /// closes, so a full-screen app stays the active app and macOS hides the menu bar again.
     private var previousApp: NSRunningApplication?
+    private let logger = Logger(subsystem: "app.tempo.menubar", category: "menubar")
+    private func log(_ message: String) {
+        logger.notice("\(message, privacy: .public)")
+        if dryRun { NSLog("%@", message) }
+    }
+    /// `--click-test` only logs clicks; it must not start timers in the user's account.
+    private let dryRun = CommandLine.arguments.contains("--click-test")
 
     private static let iconSize = NSSize(width: 20, height: 16)
+    /// Width of the ▶ zone at the left of the item.
+    private static let playZone: CGFloat = 24
 
     init(store: TimeStore) {
         self.store = store
@@ -81,19 +99,31 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             rootView: PopoverRootView().environmentObject(store).environmentObject(nav)
         )
 
-        timeItem.autosaveName = "TempoTime"
-        playItem.autosaveName = "TempoPlay"
-        if let button = timeItem.button {
+        item.autosaveName = "Tempo"
+        if let button = item.button {
             button.target = self
             button.action = #selector(timeClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.setAccessibilityLabel("Tempo: open the timesheet")
-        }
-        if let button = playItem.button {
-            button.target = self
-            button.action = #selector(playClicked(_:))
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            button.imagePosition = .imageOnly
+            // An empty image of the ▶ width moves the title to the right of the ▶ button.
+            button.image = NSImage(size: NSSize(width: Self.playZone, height: 16))
+            button.imagePosition = .imageLeft
+
+            playButton.isBordered = false
+            playButton.bezelStyle = .regularSquare
+            playButton.imagePosition = .imageOnly
+            playButton.imageScaling = .scaleNone
+            playButton.focusRingType = .none
+            playButton.target = self
+            playButton.action = #selector(playClicked(_:))
+            playButton.translatesAutoresizingMaskIntoConstraints = false
+            button.addSubview(playButton)
+            NSLayoutConstraint.activate([
+                playButton.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 2),
+                playButton.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+                playButton.widthAnchor.constraint(equalToConstant: Self.playZone),
+                playButton.heightAnchor.constraint(equalTo: button.heightAnchor),
+            ])
         }
 
         store.objectWillChange
@@ -105,8 +135,10 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
 
     // MARK: Clicks
 
-    @objc private func playClicked(_ sender: NSStatusBarButton) {
-        if NSApp.currentEvent?.type == .rightMouseUp || store.phase == .setup {
+    @objc private func playClicked(_ sender: NSButton) {
+        log("click: play (phase \(store.phase))")
+        guard !dryRun else { return }
+        if store.phase == .setup {
             togglePopover()
             return
         }
@@ -117,6 +149,19 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     }
 
     @objc private func timeClicked(_ sender: NSStatusBarButton) {
+        // On macOS 27 a click can arrive through the system's menu bar process instead of as a mouse
+        // event, so the ▶ subview never sees it. The pointer position on screen is still correct:
+        // if it is over the ▶ zone, treat the click as a ▶ click.
+        let pointer = NSEvent.mouseLocation
+        let frame = sender.window.map { sender.convert(sender.bounds, to: nil).offsetBy(dx: $0.frame.minX, dy: $0.frame.minY) }
+        let overPlay = frame.map { !playButton.isHidden && pointer.x < $0.minX + Self.playZone + 4 && pointer.x >= $0.minX - 2 } ?? false
+        let eventType = NSApp.currentEvent?.type.rawValue ?? 0
+        log("click: item (event \(eventType), pointer x=\(pointer.x), item \(frame.map { "\($0.minX)–\($0.maxX)" } ?? "?"), over play \(overPlay))")
+        if overPlay && NSApp.currentEvent?.type != .rightMouseUp {
+            playClicked(playButton)
+            return
+        }
+        guard !dryRun else { return }
         togglePopover()
     }
 
@@ -125,6 +170,29 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             popover.performClose(nil)
         } else if Date().timeIntervalSince(popoverClosedAt) > 0.3 {
             showPopover()
+        }
+    }
+
+    /// `Tempo --click-test`: sends synthetic clicks to both zones and logs which action ran.
+    func runClickTest() {
+        guard let button = item.button, let window = button.window else {
+            log("click-test: no status item window")
+            return
+        }
+        playButton.isHidden = false
+        button.imagePosition = .imageLeft
+        button.layoutSubtreeIfNeeded()
+        log("click-test: window \(window.windowNumber) frame \(window.frame), play frame \(playButton.frame)")
+        for (name, x) in [("play", Self.playZone / 2 + 2), ("time", button.bounds.maxX - 8)] {
+            let point = button.convert(NSPoint(x: x, y: button.bounds.midY), to: nil)
+            log("click-test: sending \(name) at x=\(point.x) (button width \(button.bounds.width))")
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                  windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                                                  clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) {
+                    window.sendEvent(event)
+                }
+            }
         }
     }
 
@@ -144,7 +212,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     }
 
     func showPopover(_ screen: Navigator.Screen = .main) {
-        guard let button = timeItem.button else { return }
+        guard let button = item.button else { return }
         nav.screen = screen
         if !NSApp.isActive { previousApp = NSWorkspace.shared.frontmostApplication }
         NSApp.activate(ignoringOtherApps: true)
@@ -162,29 +230,29 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         let key = "\(running)|\(text)|\(warn)|\(store.phase)"
         guard key != lastRender else { return }
         lastRender = key
+        guard let button = item.button else { return }
 
-        playItem.isVisible = store.phase == .ready
-        if let button = playItem.button {
-            button.image = Self.icon(running: running)
-            button.setAccessibilityLabel(running ? "Stop the timer" : "Start the timer")
-            button.toolTip = running
-                ? store.runningService.map { "Stop \($0.name) — \($0.context)" }
-                : store.lastService.map { "Start \($0.name) — \($0.context)" } ?? "Pick a service to start"
+        let ready = store.phase == .ready
+        playButton.isHidden = !ready
+        button.imagePosition = ready ? .imageLeft : .noImage
+        playButton.image = Self.icon(running: running)
+        playButton.setAccessibilityLabel(running ? "Stop the timer" : "Start the timer")
+        playButton.toolTip = running
+            ? store.runningService.map { "Stop \($0.name) — \($0.context)" }
+            : store.lastService.map { "Start \($0.name) — \($0.context)" } ?? "Pick a service to start"
+
+        let title = NSMutableAttributedString(
+            string: text,
+            attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)]
+        )
+        if warn {
+            title.append(NSAttributedString(string: " ⚠︎", attributes: [
+                .font: NSFont.systemFont(ofSize: 11),
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ]))
         }
-        if let button = timeItem.button {
-            let title = NSMutableAttributedString(
-                string: text,
-                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)]
-            )
-            if warn {
-                title.append(NSAttributedString(string: " ⚠︎", attributes: [
-                    .font: NSFont.systemFont(ofSize: 11),
-                    .foregroundColor: NSColor.secondaryLabelColor,
-                ]))
-            }
-            button.attributedTitle = title
-            button.toolTip = "Open the Tempo timesheet"
-        }
+        button.attributedTitle = title
+        button.toolTip = "Open the Tempo timesheet"
     }
 
     /// A rounded box with the play or stop glyph cut out, like the Harvest menu bar item.
