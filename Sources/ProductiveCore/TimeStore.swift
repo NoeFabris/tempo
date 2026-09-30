@@ -328,7 +328,8 @@ public final class TimeStore: ObservableObject {
         let gen = generation
         do {
             let list = try await api.trackableServices(personID: person.id).sorted {
-                ($0.clientName, $0.projectName, $0.name) < ($1.clientName, $1.projectName, $1.name)
+                ($0.shortClientName.lowercased(), $0.budgetName, $0.section, $0.position ?? 0, $0.name)
+                    < ($1.shortClientName.lowercased(), $1.budgetName, $1.section, $1.position ?? 0, $1.name)
             }
             guard person == self.person else { return }
             services = list
@@ -701,6 +702,24 @@ public final class TimeStore: ObservableObject {
     /// A replacement for a closed budget needs the user's confirmation, so it is not used here.
     public func resolvedService(for service: Service) -> Service {
         services.first { $0.id == service.id } ?? service
+    }
+
+    /// Services of recent entries, newest first (for the picker).
+    public var recentServices: [Service] {
+        var seen = Set<String>()
+        return entries.sorted { $0.day > $1.day }
+            .map { resolvedService(for: $0.service) }
+            .filter { !$0.id.isEmpty && seen.insert($0.id).inserted }
+    }
+
+    /// Client codes learned from Jira keys ("WT-558" on a Wingtip entry → "wt": "Wingtip Online Ltd").
+    public var clientCodes: [String: String] {
+        var codes: [String: String] = [:]
+        for entry in entries {
+            guard let key = entry.jira?.key, let dash = key.firstIndex(of: "-"), !entry.service.clientName.isEmpty else { continue }
+            codes[key[..<dash].lowercased()] = entry.service.clientName
+        }
+        return codes
     }
 
     public func isMissing(_ fav: Favourite) -> Bool {

@@ -127,6 +127,9 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
 
     func popoverDidClose(_ notification: Notification) {
         popoverClosedAt = Date()
+        // Opening the popover makes Tempo the active app. An active app without a full-screen window
+        // makes macOS show the menu bar over full-screen apps, so give the focus back.
+        if NSApp.isActive { NSApp.hide(nil) }
     }
 
     func showPopover(_ screen: Navigator.Screen = .main) {

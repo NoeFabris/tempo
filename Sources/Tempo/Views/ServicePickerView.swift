@@ -1,12 +1,15 @@
 import ProductiveCore
 import SwiftUI
 
-/// Favourites first, then a search in all trackable services, grouped by client.
+/// Picks a service. Without a search: Recent, Favourites, then one collapsed row per client.
+/// With a search: the matching services, grouped by client. The search looks at the client,
+/// client codes (from Jira keys and "[NWR]"-style budget prefixes), budget, section and service.
 struct ServicePickerView: View {
     @EnvironmentObject var store: TimeStore
     @EnvironmentObject var nav: Navigator
     let mode: Navigator.PickerMode
     @State private var query = ""
+    @State private var expanded: Set<String> = []
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -15,7 +18,7 @@ struct ServicePickerView: View {
                          back: backScreen)
 
             HStack(spacing: 6) {
-                TextField("Search client, project or service", text: $query)
+                TextField("Search client, code, budget or service", text: $query)
                     .focused($searchFocused)
                     .brandField()
                 IconButton(systemName: "arrow.clockwise", help: "Reload services") {
@@ -27,27 +30,13 @@ struct ServicePickerView: View {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 4) {
-                    if query.isEmpty && !store.favourites.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            SectionLabel(bold: "Favourites", italic: "")
-                            ForEach(store.favourites) { fav in
-                                if store.isMissing(fav) {
-                                    closedRow(fav)
-                                } else {
-                                    row(store.replacements[fav.serviceID] ?? store.resolvedService(for: fav.service))
-                                }
-                            }
-                        }
-                    }
                     if store.services.isEmpty {
                         Text(store.isLoading ? "Loading services…" : "No services found. Press reload.")
                             .font(Brand.italic(12)).foregroundStyle(Brand.secondary).padding(.vertical, 12)
-                    }
-                    ForEach(groups, id: \.client) { group in
-                        VStack(alignment: .leading, spacing: 4) {
-                            SectionLabel(bold: group.client.isEmpty ? "Other" : group.client, italic: "")
-                            ForEach(group.services) { row($0) }
-                        }
+                    } else if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                        browse
+                    } else {
+                        results
                     }
                 }
                 .padding(.horizontal, 16)
@@ -60,34 +49,113 @@ struct ServicePickerView: View {
         }
     }
 
-    private var groups: [(client: String, services: [Service])] {
-        let terms = query.lowercased().split(separator: " ").map(String.init)
-        let matches = store.services.filter { s in
-            let hay = "\(s.clientName) \(s.projectName) \(s.budgetName) \(s.name)".lowercased()
-            return terms.allSatisfy { hay.contains($0) }
+    // MARK: Browse (no search)
+
+    @ViewBuilder private var browse: some View {
+        let recent = Array(store.recentServices.prefix(6))
+        if !recent.isEmpty {
+            block("Recent") { ForEach(recent) { row($0, showClient: true) } }
         }
-        var order: [String] = []
-        var byClient: [String: [Service]] = [:]
-        for s in matches {
-            if byClient[s.clientName] == nil { order.append(s.clientName) }
-            byClient[s.clientName, default: []].append(s)
+        if !store.favourites.isEmpty {
+            block("Favourites") {
+                ForEach(store.favourites) { fav in
+                    if store.isMissing(fav) {
+                        closedRow(fav)
+                    } else {
+                        row(store.replacements[fav.serviceID] ?? store.resolvedService(for: fav.service), showClient: true)
+                    }
+                }
+            }
         }
-        return order.map { ($0, byClient[$0]!) }
+        block("All clients") {
+            ForEach(ServiceSearch.groups(store.services)) { group in
+                clientHeader(group, collapsible: true)
+                if expanded.contains(group.id) { groupBody(group) }
+            }
+        }
     }
 
-    private func row(_ service: Service) -> some View {
+    // MARK: Search
+
+    @ViewBuilder private var results: some View {
+        let groups = ServiceSearch.groups(ServiceSearch.filter(store.services, query: query, codes: store.clientCodes), keepOrder: true)
+        if groups.isEmpty {
+            Text("No service matches “\(query)”.")
+                .font(Brand.italic(12)).foregroundStyle(Brand.secondary).padding(.vertical, 12)
+        }
+        ForEach(groups) { group in
+            VStack(alignment: .leading, spacing: 4) {
+                clientHeader(group, collapsible: false)
+                groupBody(group)
+            }
+        }
+    }
+
+    // MARK: Pieces
+
+    private func block<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            SectionLabel(bold: title, italic: "")
+            content()
+        }
+    }
+
+    private func clientHeader(_ group: ClientGroup, collapsible: Bool) -> some View {
+        Button {
+            guard collapsible else { return }
+            if expanded.contains(group.id) { expanded.remove(group.id) } else { expanded.insert(group.id) }
+        } label: {
+            HStack(spacing: 6) {
+                if collapsible {
+                    Image(systemName: expanded.contains(group.id) ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .bold)).foregroundStyle(Brand.secondary).frame(width: 10)
+                }
+                Text(group.title).font(Brand.font(13, .bold)).lineLimit(1)
+                Spacer()
+                Text("\(group.services.count)").font(Brand.digits(11)).foregroundStyle(Brand.secondary)
+            }
+            .padding(.vertical, collapsible ? 6 : 4)
+            .padding(.top, collapsible ? 0 : 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(group.clientName)
+    }
+
+    /// The services of one client, under a small label per budget.
+    @ViewBuilder private func groupBody(_ group: ClientGroup) -> some View {
+        ForEach(group.budgets, id: \.name) { budget in
+            if !budget.name.isEmpty {
+                Text(budget.name)
+                    .font(Brand.italic(11)).foregroundStyle(Brand.secondary)
+                    .lineLimit(2)
+                    .padding(.leading, 16).padding(.top, 4)
+            }
+            ForEach(budget.services) { row($0, showClient: false).padding(.leading, 16) }
+        }
+    }
+
+    /// `showClient`: the client is the title (mixed lists). Otherwise the service is the title.
+    private func row(_ service: Service, showClient: Bool) -> some View {
         HStack(spacing: 8) {
             Button { choose(service) } label: {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(service.name).font(Brand.font(13, .semibold)).lineLimit(1)
-                    Text(service.budgetName.isEmpty ? service.projectName : service.budgetName)
-                        .font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+                    if showClient {
+                        Text(TimerHeaderView.client(service)).font(Brand.font(13, .semibold)).lineLimit(1)
+                        Text([service.name, service.section].filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+                    } else {
+                        Text(service.name).font(Brand.font(13, .semibold)).lineLimit(1)
+                        if !service.section.isEmpty {
+                            Text(service.section).font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(service.budgetName)
+            .help([service.clientName, service.budgetName, service.section, service.name].filter { !$0.isEmpty }.joined(separator: "\n"))
 
             let fav = store.isFavourite(service)
             IconButton(systemName: fav ? "star.fill" : "star", help: fav ? "Remove favourite" : "Add to favourites",
@@ -104,8 +172,8 @@ struct ServicePickerView: View {
     private func closedRow(_ fav: Favourite) -> some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(fav.serviceName).font(Brand.font(13, .semibold)).foregroundStyle(Brand.secondary).lineLimit(1)
-                Text("No open budget. \(fav.clientName)").font(Brand.italic(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+                Text(TimerHeaderView.client(fav.service)).font(Brand.font(13, .semibold)).foregroundStyle(Brand.secondary).lineLimit(1)
+                Text("\(fav.serviceName) · no open budget").font(Brand.italic(11)).foregroundStyle(Brand.secondary).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             IconButton(systemName: "xmark", help: "Remove favourite") { store.removeFavourite(fav) }

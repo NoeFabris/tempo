@@ -50,14 +50,23 @@ public struct Service: Identifiable, Equatable, Hashable, Codable, Sendable {
     public let budgetName: String
     public let projectName: String
     public let clientName: String
+    /// The budget section, for example "Experiment (Full Service)". Optional for stored data from older versions.
+    public let sectionName: String?
+    /// The order of the service in its budget.
+    public let position: Int?
 
-    public init(id: String, name: String, budgetName: String = "", projectName: String = "", clientName: String = "") {
+    public init(id: String, name: String, budgetName: String = "", projectName: String = "", clientName: String = "",
+                sectionName: String? = nil, position: Int? = nil) {
         self.id = id
         self.name = name
         self.budgetName = budgetName
         self.projectName = projectName
         self.clientName = clientName
+        self.sectionName = sectionName
+        self.position = position
     }
+
+    public var section: String { sectionName ?? "" }
 
     /// The client without its legal suffix: "Wingtip Online Ltd" → "Wingtip Online".
     public var shortClientName: String {
@@ -167,6 +176,7 @@ public struct Favourite: Identifiable, Equatable, Codable, Sendable {
     public var budgetName: String
     public var projectName: String
     public var clientName: String
+    public var sectionName: String?
 
     public var id: String { serviceID }
 
@@ -176,9 +186,11 @@ public struct Favourite: Identifiable, Equatable, Codable, Sendable {
         budgetName = service.budgetName
         projectName = service.projectName
         clientName = service.clientName
+        sectionName = service.sectionName
     }
 
     public var service: Service {
-        Service(id: serviceID, name: serviceName, budgetName: budgetName, projectName: projectName, clientName: clientName)
+        Service(id: serviceID, name: serviceName, budgetName: budgetName, projectName: projectName, clientName: clientName,
+                sectionName: sectionName)
     }
 }

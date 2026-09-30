@@ -15,6 +15,7 @@ public enum FavouriteMatcher {
 
         let byLabel = services.filter {
             same($0.clientName, fav.clientName) && same($0.projectName, fav.projectName) && same($0.name, fav.serviceName)
+                && (fav.sectionName == nil || $0.sectionName == nil || same($0.section, fav.sectionName ?? ""))
         }
         let candidates = byLabel.isEmpty
             ? services.filter { same($0.clientName, fav.clientName) && same($0.name, fav.serviceName) }

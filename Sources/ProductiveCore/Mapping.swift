@@ -6,12 +6,15 @@ public enum Mapping {
         let deal = index.resource(r.related("deal"))
         let project = index.resource(deal?.related("project")) ?? index.resource(r.related("project"))
         let company = index.resource(deal?.related("company")) ?? index.resource(project?.related("company"))
+        let section = index.resource(r.related("section"))
         return Service(
             id: r.id,
             name: r[attribute: "name"]?.string ?? "Service \(r.id)",
             budgetName: deal?[attribute: "name"]?.string ?? "",
             projectName: project?[attribute: "name"]?.string ?? "",
-            clientName: company?[attribute: "name"]?.string ?? ""
+            clientName: company?[attribute: "name"]?.string ?? "",
+            sectionName: section?[attribute: "name"]?.string,
+            position: r[attribute: "position"]?.int
         )
     }
 

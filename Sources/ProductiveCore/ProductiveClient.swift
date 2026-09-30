@@ -78,8 +78,8 @@ public final class ProductiveClient: ProductiveAPI, @unchecked Sendable {
     private let session: URLSession
     private let sleep: @Sendable (TimeInterval) async -> Void
 
-    static let serviceInclude = "deal,deal.project,deal.company"
-    static let entryInclude = "service,service.deal,service.deal.project,service.deal.company"
+    static let serviceInclude = "deal,deal.project,deal.company,section"
+    static let entryInclude = "service,service.deal,service.deal.project,service.deal.company,service.section"
 
     /// Ephemeral: no response cache on disk.
     public static let defaultSession = URLSession(configuration: .ephemeral)
@@ -127,10 +127,16 @@ public final class ProductiveClient: ProductiveAPI, @unchecked Sendable {
         .filter { $0.day >= from && $0.day <= to }
     }
 
+    /// Services the person can track on today. Without the budget and date filters, Productive returns
+    /// every service of the organisation (tens of thousands, most in closed budgets).
     public func trackableServices(personID: String) async throws -> [Service] {
+        let today = Day(Date()).iso
         let docs = try await sendAllPages("services", query: [
             "filter[trackable_by_person_id]": personID,
             "filter[time_tracking_enabled]": "true",
+            "filter[budget_status]": "1", // 1 = open
+            "filter[after]": today,
+            "filter[before]": today,
             "include": Self.serviceInclude,
         ])
         return docs.flatMap { doc -> [Service] in
