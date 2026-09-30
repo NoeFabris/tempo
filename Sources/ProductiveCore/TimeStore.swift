@@ -12,16 +12,16 @@ extension KeychainStore: TokenStoring {}
 enum PendingAction: Equatable {
     /// Start a timer on `service`. `at` is the click time. `entryID` is the entry to continue
     /// (with `baseMinutes`), or nil to create one.
-    case start(id: UUID, service: Service, at: Date, entryID: String?, baseMinutes: Int)
+    case start(id: UUID, service: Service, at: Date, entryID: String?, baseMinutes: Int, note: String)
     /// Stop timer `timerID`, and set its entry to `baseMinutes` + the minutes from `startedAt` to `at`.
     case stop(id: UUID, timerID: String, entryID: String, startedAt: Date, baseMinutes: Int, at: Date)
     /// A start and stop that both happened offline: set `entryID` to `baseMinutes + minutes`,
     /// or create an entry of `minutes` when `entryID` is nil.
-    case log(id: UUID, service: Service, day: Day, entryID: String?, baseMinutes: Int, minutes: Int)
+    case log(id: UUID, service: Service, day: Day, entryID: String?, baseMinutes: Int, minutes: Int, note: String)
 
     var id: UUID {
         switch self {
-        case .start(let id, _, _, _, _), .stop(let id, _, _, _, _, _), .log(let id, _, _, _, _, _): return id
+        case .start(let id, _, _, _, _, _), .stop(let id, _, _, _, _, _), .log(let id, _, _, _, _, _, _): return id
         }
     }
 }
@@ -106,6 +106,13 @@ public final class TimeStore: ObservableObject {
     public var storedToken: String { tokenStore.read() ?? "" }
     public var lastService: Service? { settings.lastService }
 
+    /// The entry that ▶ resumes: the last entry, when it is from today and can still change.
+    public var resumableEntry: TimeEntry? {
+        guard let last = settings.lastEntry, last.day == today,
+              let entry = entries.first(where: { $0.id == last.entryID }), !entry.isLocked else { return nil }
+        return entry
+    }
+
     public var runningEntry: TimeEntry? {
         guard let timer else { return nil }
         return entries.first { $0.id == timer.timeEntryID } ?? timer.entry
@@ -140,11 +147,10 @@ public final class TimeStore: ObservableObject {
     public var weekTotal: Int { weekDays.reduce(0) { $0 + total(on: $1) } }
     public var isCurrentWeek: Bool { weekDays.contains(today) }
 
-    /// The number in the menu bar.
+    /// The number in the menu bar: the running entry, or the entry that ▶ resumes.
     public var menuBarMinutes: Int {
         if let running = runningEntry { return liveMinutes(running) }
-        guard let last = settings.lastService else { return 0 }
-        return entries(on: today).filter { $0.service.id == last.id }.reduce(0) { $0 + $1.minutes }
+        return resumableEntry?.minutes ?? 0
     }
 
     // MARK: - Serial queue
@@ -288,6 +294,7 @@ public final class TimeStore: ObservableObject {
             guard gen == generation else { return }
             entries = entryList
             setTimer(running)
+            if let entry = runningEntry, !entry.isPending { remember(entry) }
             isOffline = false
             lastError = nil
             await fillJiraNotes(api: api)
@@ -375,13 +382,26 @@ public final class TimeStore: ObservableObject {
             await stop()
             return true
         }
+        if let entry = resumableEntry {
+            await start(resolvedService(for: entry.service), continuing: entry)
+            return true
+        }
         guard let last = settings.lastService else { return false }
-        await start(resolvedService(for: last))
+        // After midnight (or when the last entry is gone): a new entry on the same service, same note.
+        let note = settings.lastEntry.flatMap { $0.serviceID == last.id ? $0.note : nil } ?? ""
+        await start(resolvedService(for: last), note: note)
         return true
     }
 
-    /// Starts `service`. Continues `preferred` (or today's unlocked entry on the service) when possible.
-    public func start(_ service: Service, continuing preferred: TimeEntry? = nil) async {
+    private func remember(_ entry: TimeEntry) {
+        settings.lastService = entry.service
+        settings.lastEntry = LastEntry(entryID: entry.id, day: entry.day, serviceID: entry.service.id, note: entry.note)
+    }
+
+    /// Starts `service`.
+    /// - With `preferred`: continues that entry when it is from today, else makes a new entry with its note.
+    /// - Without: continues today's entry on the service that has no note, else makes a new entry with `note`.
+    public func start(_ service: Service, continuing preferred: TimeEntry? = nil, note: String = "") async {
         guard api != nil, person != nil else { return }
         // A second click on what already runs does nothing (for example, a double click).
         if let running = runningEntry, running.service.id == service.id, preferred == nil || preferred?.id == running.id {
@@ -391,15 +411,23 @@ public final class TimeStore: ObservableObject {
         let previous = timer.map { localStop($0, at: startedAt) }
 
         let today = Day(startedAt)
-        let existing = (preferred.flatMap { $0.day == today && !$0.isLocked && !$0.isPending ? $0 : nil })
-            ?? entries.first { $0.day == today && $0.service.id == service.id && !$0.isLocked && !$0.isPending }
+        let usable: (TimeEntry) -> Bool = { $0.day == today && !$0.isLocked && !$0.isPending }
+        let existing: TimeEntry?
+        let newNote: String
+        if let preferred {
+            existing = usable(preferred) ? preferred : nil
+            newNote = preferred.note
+        } else {
+            existing = note.isEmpty ? entries.first { usable($0) && $0.service.id == service.id && $0.note.isEmpty } : nil
+            newNote = note
+        }
         settings.lastService = service
 
         // Show the timer at once.
         let actionID = UUID()
         let placeholderID = Self.placeholderPrefix + actionID.uuidString
         let placeholder = existing
-            ?? TimeEntry(id: Self.placeholderPrefix + "entry", day: today, minutes: 0, note: "", service: service)
+            ?? TimeEntry(id: Self.placeholderPrefix + "entry", day: today, minutes: 0, note: newNote, service: service)
         generation += 1
         timerBaseMinutes = placeholder.minutes
         timer = RunningTimer(id: placeholderID, startedAt: startedAt, timeEntryID: placeholder.id, entry: placeholder)
@@ -407,24 +435,25 @@ public final class TimeStore: ObservableObject {
         await serial { [weak self] in
             guard let self else { return }
             if let previous { await self.performStop(previous, at: startedAt, refreshAfter: false) }
-            await self.performStart(actionID, service: service, existing: existing, at: startedAt)
+            await self.performStart(actionID, service: service, existing: existing, note: newNote, at: startedAt)
         }
     }
 
-    private func performStart(_ actionID: UUID, service: Service, existing: TimeEntry?, at startedAt: Date) async {
+    private func performStart(_ actionID: UUID, service: Service, existing: TimeEntry?, note: String, at startedAt: Date) async {
         guard let api, let person else { return }
         let placeholderID = Self.placeholderPrefix + actionID.uuidString
         var entry = existing
         do {
             if entry == nil {
                 let created = try await api.createTimeEntry(personID: person.id, serviceID: service.id,
-                                                            day: Day(startedAt), minutes: 0, note: "")
+                                                            day: Day(startedAt), minutes: 0, note: note)
                 entries.append(created)
                 entry = created
             }
             var started = try await api.startTimer(timeEntryID: entry!.id)
             if started.entry == nil { started.entry = entry }
             startedTimers[actionID] = started
+            remember(entry!)
             if timer?.id == placeholderID {
                 timerBaseMinutes = entry!.minutes
                 timer = started
@@ -433,7 +462,7 @@ public final class TimeStore: ObservableObject {
         } catch ProductiveError.offline {
             isOffline = true
             pending.append(.start(id: actionID, service: service, at: startedAt,
-                                  entryID: entry?.id, baseMinutes: entry?.minutes ?? 0))
+                                  entryID: entry?.id, baseMinutes: entry?.minutes ?? 0, note: note))
         } catch {
             if timer?.id == placeholderID { timer = nil }
             handle(error)
@@ -465,10 +494,10 @@ public final class TimeStore: ObservableObject {
 
         if target.id.hasPrefix(Self.placeholderPrefix), let actionID = UUID(uuidString: String(target.id.dropFirst(Self.placeholderPrefix.count))) {
             if let i = pending.firstIndex(where: { $0.id == actionID }),
-               case .start(_, let service, let at, let entryID, let base) = pending[i] {
+               case .start(_, let service, let at, let entryID, let base, let note) = pending[i] {
                 // The start never reached Productive: log the whole block instead.
                 pending[i] = .log(id: actionID, service: service, day: Day(at), entryID: entryID,
-                                  baseMinutes: base, minutes: Self.minutes(from: at, to: stoppedAt))
+                                  baseMinutes: base, minutes: Self.minutes(from: at, to: stoppedAt), note: note)
                 return
             }
             guard let real = startedTimers.removeValue(forKey: actionID) else { return } // The start failed.
@@ -499,16 +528,17 @@ public final class TimeStore: ObservableObject {
     private func flushPending(api: ProductiveAPI, person: Person) async throws {
         while let action = pending.first {
             switch action {
-            case .start(let id, let service, let at, let entryID, let base):
+            case .start(let id, let service, let at, let entryID, let base, let note):
                 let gap = Self.minutes(from: at, to: clock())
                 let entry: TimeEntry
                 if let entryID {
                     entry = try await api.updateTimeEntry(id: entryID, minutes: base + gap, note: nil)
                 } else {
                     entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id,
-                                                          day: Day(at), minutes: gap, note: "")
+                                                          day: Day(at), minutes: gap, note: note)
                     // A retry must continue this entry, not create a second one.
-                    replacePending(id, with: .start(id: id, service: service, at: at, entryID: entry.id, baseMinutes: 0))
+                    replacePending(id, with: .start(id: id, service: service, at: at, entryID: entry.id,
+                                                    baseMinutes: 0, note: note))
                 }
                 startedTimers[id] = try await api.startTimer(timeEntryID: entry.id)
 
@@ -518,14 +548,14 @@ public final class TimeStore: ObservableObject {
                 catch { /* The timer was already stopped somewhere else. */ }
                 _ = try await api.updateTimeEntry(id: entryID, minutes: base + Self.minutes(from: startedAt, to: at), note: nil)
 
-            case .log(let id, let service, let day, let entryID, let base, let minutes):
+            case .log(let id, let service, let day, let entryID, let base, let minutes, let note):
                 if let entryID {
                     _ = try await api.updateTimeEntry(id: entryID, minutes: base + minutes, note: nil)
                 } else {
                     let entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id,
-                                                              day: day, minutes: minutes, note: "")
+                                                              day: day, minutes: minutes, note: note)
                     replacePending(id, with: .log(id: id, service: service, day: day, entryID: entry.id,
-                                                  baseMinutes: 0, minutes: minutes))
+                                                  baseMinutes: 0, minutes: minutes, note: note))
                 }
             }
             pending.removeAll { $0.id == action.id }
@@ -574,6 +604,7 @@ public final class TimeStore: ObservableObject {
             do {
                 let updated = try await api.updateTimeEntry(id: entry.id, changes: changes)
                 if let i = self.entries.firstIndex(where: { $0.id == entry.id }) { self.entries[i] = updated }
+                if self.settings.lastEntry?.entryID == entry.id { self.remember(updated) }
                 return true
             } catch {
                 self.handle(error)

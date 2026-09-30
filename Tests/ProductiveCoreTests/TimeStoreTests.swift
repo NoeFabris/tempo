@@ -136,6 +136,58 @@ final class TimeStoreTests: XCTestCase {
         XCTAssertEqual(store.menuBarMinutes, 45, "base minutes plus a session of 0 minutes")
     }
 
+    func testToggleResumesTheLastEntryNotAnotherOnTheSameService() async {
+        let today = Day(Date())
+        api.entries = [TimeEntry(id: "501", day: today, minutes: 30, note: "E97", service: cro),
+                       TimeEntry(id: "502", day: today, minutes: 20, note: "E95", service: cro)]
+        let store = await connectedStore()
+        await store.start(cro, continuing: store.entries[1])
+        await store.stop()
+        XCTAssertEqual(store.resumableEntry?.id, "502")
+        api.calls = []
+        await store.toggle()
+        XCTAssertEqual(api.calls.filter { $0.hasPrefix("start") }, ["start 502"])
+        XCTAssertFalse(api.calls.contains { $0.hasPrefix("create") })
+    }
+
+    func testToggleAfterMidnightStartsNewEntryWithSameNote() async {
+        var clock = Calendar.current.date(bySettingHour: 23, minute: 50, second: 0, of: Date())!
+        api.entries = [TimeEntry(id: "501", day: Day(clock), minutes: 30, note: "E97", service: cro)]
+        let store = TimeStore(settings: settings, tokenStore: MemoryTokenStore(), makeAPI: { [api] _ in api! }, clock: { clock })
+        await store.connect(token: "t", organizationID: "1")
+        await store.start(cro, continuing: store.entries[0])
+        await store.stop()
+        clock = clock.addingTimeInterval(20 * 60) // 00:10 the next day
+        api.calls = []
+        await store.toggle()
+        XCTAssertTrue(api.calls.contains("create 9001 0"))
+        XCTAssertEqual(api.entries.last?.note, "E97")
+        XCTAssertEqual(api.entries.last?.day, Day(clock))
+    }
+
+    func testTimerStartedElsewhereBecomesResumable() async {
+        let entry = TimeEntry(id: "501", day: Day(Date()), minutes: 30, note: "E97", service: cro)
+        api.entries = [entry]
+        api.timers = [RunningTimer(id: "7001", startedAt: Date(), timeEntryID: "501")]
+        let store = await connectedStore()
+        XCTAssertEqual(settings.lastEntry?.entryID, "501")
+        XCTAssertEqual(settings.lastService, cro)
+    }
+
+    func testChipStartDoesNotJoinAnEntryWithANote() async {
+        api.entries = [TimeEntry(id: "501", day: Day(Date()), minutes: 30, note: "E97", service: cro)]
+        let store = await connectedStore()
+        await store.start(cro)
+        XCTAssertTrue(api.calls.contains("create 9001 0"), "E97 work stays separate")
+    }
+
+    func testShortClientName() {
+        XCTAssertEqual(Service(id: "1", name: "S", clientName: "Wingtip Online Ltd").shortClientName, "Wingtip Online")
+        XCTAssertEqual(Service(id: "1", name: "S", clientName: "Northwind Retail Limited").shortClientName, "Northwind Retail")
+        XCTAssertEqual(Service(id: "1", name: "S", clientName: "Tailspin Sports Online.com B.V").shortClientName, "Tailspin Sports Online.com")
+        XCTAssertEqual(Service(id: "1", name: "S", clientName: "Acme, Inc.").shortClientName, "Acme")
+    }
+
     func testLockedEntryIsNotContinued() async {
         api.entries = [TimeEntry(id: "501", day: Day(Date()), minutes: 45, note: "", service: cro, isLocked: true)]
         let store = await connectedStore()
@@ -180,7 +232,7 @@ final class TimeStoreTests: XCTestCase {
         clock = clock.addingTimeInterval(25 * 60)
         await store.stop()
         XCTAssertFalse(store.isRunning)
-        guard case .log(_, let service, let day, let entryID, _, let minutes)? = store.pending.first, store.pending.count == 1 else {
+        guard case .log(_, let service, let day, let entryID, _, let minutes, _)? = store.pending.first, store.pending.count == 1 else {
             return XCTFail("expected one .log, got \(store.pending)")
         }
         XCTAssertEqual(service, cro)

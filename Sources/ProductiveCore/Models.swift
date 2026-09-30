@@ -59,6 +59,22 @@ public struct Service: Identifiable, Equatable, Hashable, Codable, Sendable {
         self.clientName = clientName
     }
 
+    /// The client without its legal suffix: "Wingtip Online Ltd" → "Wingtip Online".
+    public var shortClientName: String {
+        var name = clientName.trimmingCharacters(in: .whitespaces)
+        let suffixes = [" limited", " ltd.", " ltd", " b.v.", " b.v", " bv", " inc.", " inc", " llc", " plc",
+                        " gmbh", " s.l.", " sl", " s.a.", " sa", " pty", " co."]
+        var changed = true
+        while changed {
+            changed = false
+            for suffix in suffixes where name.lowercased().hasSuffix(suffix) {
+                name = String(name.dropLast(suffix.count)).trimmingCharacters(in: CharacterSet(charactersIn: " ,"))
+                changed = true
+            }
+        }
+        return name
+    }
+
     /// "Client · Project" (or the budget when no project is known).
     public var context: String {
         [clientName, projectName.isEmpty ? budgetName : projectName]
@@ -128,6 +144,21 @@ public struct RunningTimer: Identifiable, Equatable, Sendable {
     }
 
     public var isRunning: Bool { stoppedAt == nil }
+}
+
+/// The entry that the last timer ran on, so ▶ can resume the same task.
+public struct LastEntry: Equatable, Codable, Sendable {
+    public let entryID: String
+    public let day: Day
+    public let serviceID: String
+    public let note: String
+
+    public init(entryID: String, day: Day, serviceID: String, note: String) {
+        self.entryID = entryID
+        self.day = day
+        self.serviceID = serviceID
+        self.note = note
+    }
 }
 
 public struct Favourite: Identifiable, Equatable, Codable, Sendable {

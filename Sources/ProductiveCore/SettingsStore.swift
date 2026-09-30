@@ -52,6 +52,7 @@ public final class SettingsStore: @unchecked Sendable {
         static let firstWeekday = "firstWeekday"
         static let favourites = "favourites"
         static let lastService = "lastService"
+        static let lastEntry = "lastEntry"
     }
 
     public var organizationID: String {
@@ -84,6 +85,11 @@ public final class SettingsStore: @unchecked Sendable {
     public var lastService: Service? {
         get { decode(Key.lastService) }
         set { encode(newValue, Key.lastService) }
+    }
+
+    public var lastEntry: LastEntry? {
+        get { decode(Key.lastEntry) }
+        set { encode(newValue, Key.lastEntry) }
     }
 
     private func decode<T: Decodable>(_ key: String) -> T? {

@@ -31,18 +31,11 @@ struct TimerHeaderView: View {
     @EnvironmentObject var nav: Navigator
 
     var body: some View {
-        if let service = store.runningService {
+        if let entry = store.runningEntry {
             HStack(spacing: 10) {
                 Circle().fill(Brand.violet).frame(width: 8, height: 8)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(service.name).font(Brand.font(14, .semibold)).lineLimit(1)
-                    Text(service.clientName.isEmpty ? service.context : service.clientName)
-                        .font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
-                    if let entry = store.runningEntry, !entry.note.isEmpty || entry.jira != nil {
-                        EntryDetailLine(entry: entry)
-                    }
-                }
-                .layoutPriority(1)
+                EntryLabels(entry: entry, titleSize: 15)
+                    .layoutPriority(1)
                 Spacer(minLength: 4)
                 Text(TimeFormat.hms(seconds: store.runningSeconds)).font(Brand.digits(15, .semibold)).fixedSize()
                 Button { Task { await store.stop() } } label: {
@@ -51,6 +44,7 @@ struct TimerHeaderView: View {
                         .foregroundStyle(Brand.onViolet)
                         .frame(width: 30, height: 30)
                         .background(Circle().fill(Brand.violet))
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .help("Stop the timer")
@@ -67,19 +61,23 @@ struct TimerHeaderView: View {
                 if !quickStarts.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(quickStarts) { service in
-                                Button { Task { await store.start(store.resolvedService(for: service)) } } label: {
-                                    HStack(spacing: 4) {
+                            ForEach(quickStarts) { chip in
+                                Button { Task { await chip.start(store) } } label: {
+                                    HStack(spacing: 5) {
                                         Image(systemName: "play.fill").font(.system(size: 8))
-                                        Text(service.name).lineLimit(1)
+                                        Text(chip.title).font(Brand.font(12, .semibold))
+                                        if !chip.detail.isEmpty {
+                                            Text(chip.detail).font(Brand.font(12)).foregroundStyle(Brand.secondary)
+                                        }
                                     }
-                                    .font(Brand.font(12, .medium))
+                                    .lineLimit(1)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 5)
                                     .background(Capsule().stroke(Brand.separator))
+                                    .contentShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
-                                .help(service.context)
+                                .help(chip.help)
                             }
                         }
                         .padding(1) // Keeps the capsule strokes inside the scroll view.
@@ -90,14 +88,63 @@ struct TimerHeaderView: View {
         }
     }
 
-    /// The last service first, then favourites.
-    private var quickStarts: [Service] {
-        var list: [Service] = []
-        if let last = store.lastService { list.append(last) }
-        for fav in store.favourites where !list.contains(where: { $0.id == fav.serviceID }) && !store.isMissing(fav) {
-            list.append(fav.service)
+    /// A quick-start chip: client first, then the note (resume) or the service (favourite).
+    struct Chip: Identifiable {
+        let id: String
+        let title: String
+        let detail: String
+        let help: String
+        let start: @MainActor (TimeStore) async -> Void
+    }
+
+    /// The task that ▶ resumes first, then the favourites.
+    private var quickStarts: [Chip] {
+        var chips: [Chip] = []
+        if let entry = store.resumableEntry {
+            chips.append(Chip(id: "resume", title: Self.client(entry.service),
+                              detail: entry.note.isEmpty ? (entry.jira?.key ?? entry.service.name) : entry.note,
+                              help: "Resume: \(entry.service.name) — \(entry.service.context)") { store in
+                await store.start(store.resolvedService(for: entry.service), continuing: entry)
+            })
+        } else if let last = store.lastService {
+            chips.append(Chip(id: "last", title: Self.client(last), detail: last.name, help: last.context) { store in
+                _ = await store.toggle()
+            })
         }
-        return list
+        let lastChipService = store.resumableEntry == nil ? store.lastService?.id : nil
+        for fav in store.favourites where !store.isMissing(fav) && fav.serviceID != lastChipService {
+            let service = fav.service
+            chips.append(Chip(id: "fav-\(fav.serviceID)", title: Self.client(service), detail: service.name,
+                              help: service.context) { store in
+                await store.start(store.resolvedService(for: service))
+            })
+        }
+        return chips
+    }
+
+    static func client(_ service: Service) -> String {
+        service.shortClientName.isEmpty ? service.name : service.shortClientName
+    }
+}
+
+/// Client (title), then the Jira key and note, then the service. Used by the header and the rows.
+struct EntryLabels: View {
+    let entry: TimeEntry
+    var titleSize: CGFloat = 13
+    var titleColor: Color = Brand.text
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(TimerHeaderView.client(entry.service))
+                .font(Brand.font(titleSize, .semibold)).foregroundStyle(titleColor).lineLimit(1)
+                .help(entry.service.clientName)
+            if !entry.note.isEmpty || entry.jira != nil {
+                EntryDetailLine(entry: entry)
+            }
+            Text(entry.service.shortClientName.isEmpty ? entry.service.context : entry.service.name)
+                .font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+                .help(entry.service.budgetName)
+        }
     }
 }
 
@@ -268,26 +315,22 @@ struct EntryRow: View {
                 Image(systemName: isRunning ? "stop.fill" : "play.fill")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(isRunning ? Brand.onViolet : Brand.text)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 28, height: 28)
                     .background(Circle().fill(isRunning ? Brand.violet : Color.clear))
                     .overlay(Circle().stroke(isRunning ? Color.clear : Brand.separator))
+                    .contentShape(Circle()) // The transparent inside must take clicks too.
             }
             .buttonStyle(.plain)
             .help(isRunning ? "Stop" : "Continue this entry")
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(entry.service.name).font(Brand.font(13, .semibold)).lineLimit(1)
-                Text(entry.service.clientName.isEmpty ? entry.service.context : entry.service.clientName)
-                    .font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
-                    .help(entry.service.budgetName)
-                if !entry.note.isEmpty || entry.jira != nil {
-                    EntryDetailLine(entry: entry)
-                }
-            }
+            EntryLabels(entry: entry)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
             Spacer(minLength: 4)
             Text(TimeFormat.hm(store.liveMinutes(entry)))
                 .font(Brand.digits(13, isRunning ? .bold : .medium))
                 .foregroundStyle(isRunning ? Brand.violet : Brand.text)
+                .fixedSize()
 
             if entry.isPending {
                 Image(systemName: "icloud.slash").font(.system(size: 10)).foregroundStyle(Brand.secondary)

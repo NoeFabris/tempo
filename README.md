@@ -65,5 +65,3 @@ PRODUCTIVE_TOKEN=… PRODUCTIVE_ORG_ID=… scripts/live-check.sh
 | `docs/superpowers/specs` | Design spec |
 
 Inter Tight is included under the SIL Open Font License (`Resources/Fonts/OFL.txt`).
-
-

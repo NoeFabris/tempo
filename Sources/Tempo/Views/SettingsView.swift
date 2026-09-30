@@ -14,7 +14,6 @@ struct SetupView: View {
             ConnectionForm()
                 .padding(.horizontal, 16)
             Spacer()
-            AppFooter()
         }
     }
 }
@@ -139,7 +138,6 @@ struct SettingsView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
             }
-            AppFooter()
         }
         .onAppear { target = TimeFormat.hm(store.weeklyTargetMinutes) }
         .onDisappear(perform: saveTarget)

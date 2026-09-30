@@ -44,18 +44,3 @@ struct ScreenHeader: View {
         .padding(.bottom, 8)
     }
 }
-
-struct AppFooter: View {
-    var body: some View {
-        HStack(spacing: 4) {
-            Text("Acme Agency Ltd \(String(Calendar.current.component(.year, from: Date()))) ·")
-            Link(destination: URL(string: "https://example.com")!) {
-                Text("example.com").font(Brand.font(10, .bold)).foregroundStyle(Brand.text)
-            }
-        }
-        .font(Brand.font(10))
-        .foregroundStyle(Brand.secondary)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-    }
-}
