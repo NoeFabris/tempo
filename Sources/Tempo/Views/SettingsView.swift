@@ -105,6 +105,10 @@ struct SettingsView: View {
                             .pickerStyle(.segmented)
                             .frame(width: 150)
                         }
+                        Toggle(isOn: Binding(get: { store.showWeekends }, set: { store.setShowWeekends($0) })) {
+                            Text("Show Saturday and Sunday").font(Brand.font(13))
+                        }
+                        .toggleStyle(.switch)
                         Toggle(isOn: $launchAtLogin) { Text("Start at login").font(Brand.font(13)) }
                             .toggleStyle(.switch)
                             .onChange(of: launchAtLogin) { _, on in setLaunchAtLogin(on) }

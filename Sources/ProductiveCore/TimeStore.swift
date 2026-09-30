@@ -59,6 +59,7 @@ public final class TimeStore: ObservableObject {
     @Published public private(set) var now: Date
     @Published public private(set) var weeklyTargetMinutes: Int
     @Published public private(set) var firstWeekday: Int
+    @Published public private(set) var showWeekends: Bool
     /// Calendar meetings by day, loaded for the selected day.
     @Published public private(set) var calendar: [Day: [CalendarEvent]] = [:]
 
@@ -96,6 +97,7 @@ public final class TimeStore: ObservableObject {
         self.selectedDay = Day(now)
         self.weeklyTargetMinutes = settings.weeklyTargetMinutes
         self.firstWeekday = settings.firstWeekday
+        self.showWeekends = settings.showWeekends
         self.favourites = settings.favourites
         self.weekDays = Week.days(containing: Day(now), firstWeekday: settings.firstWeekday)
     }
@@ -148,6 +150,11 @@ public final class TimeStore: ObservableObject {
     }
 
     public func total(on day: Day) -> Int { entries(on: day).reduce(0) { $0 + liveMinutes($1) } }
+    /// The days in the week strip: all 7, or Monday to Friday. Totals still count all 7 days.
+    public var visibleWeekDays: [Day] {
+        showWeekends ? weekDays : weekDays.filter { !Calendar.current.isDateInWeekend($0.date()) }
+    }
+
     public var weekTotal: Int { weekDays.reduce(0) { $0 + total(on: $1) } }
     public var isCurrentWeek: Bool { weekDays.contains(today) }
 
@@ -679,7 +686,7 @@ public final class TimeStore: ObservableObject {
     public func showWeek(offset: Int) {
         let anchor = (weekDays.first ?? today).adding(days: offset * 7)
         weekDays = Week.days(containing: anchor, firstWeekday: firstWeekday)
-        selectedDay = weekDays.contains(today) ? today : weekDays.first!
+        selectedDay = weekDays.contains(today) ? today : (visibleWeekDays.first ?? weekDays.first!)
         Task { await refresh() }
     }
 
@@ -694,6 +701,11 @@ public final class TimeStore: ObservableObject {
     public func setWeeklyTarget(minutes: Int) {
         settings.weeklyTargetMinutes = minutes
         weeklyTargetMinutes = minutes
+    }
+
+    public func setShowWeekends(_ show: Bool) {
+        settings.showWeekends = show
+        showWeekends = show
     }
 
     public func setFirstWeekday(_ day: Int) {

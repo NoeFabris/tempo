@@ -54,6 +54,7 @@ public final class SettingsStore: @unchecked Sendable {
         static let lastService = "lastService"
         static let lastEntry = "lastEntry"
         static let calendarLinks = "calendarLinks"
+        static let showWeekends = "showWeekends"
         static let meetingServices = "meetingServices"
     }
 
@@ -92,6 +93,12 @@ public final class SettingsStore: @unchecked Sendable {
     public var lastEntry: LastEntry? {
         get { decode(Key.lastEntry) }
         set { encode(newValue, Key.lastEntry) }
+    }
+
+    /// Show Saturday and Sunday in the week strip. Default off.
+    public var showWeekends: Bool {
+        get { defaults.bool(forKey: Key.showWeekends) }
+        set { defaults.set(newValue, forKey: Key.showWeekends) }
     }
 
     /// Calendar event id → the id of the entry that logged it.

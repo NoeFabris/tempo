@@ -115,6 +115,16 @@ final class TimeStoreTests: XCTestCase {
         XCTAssertEqual(tokens.token, "tok")
     }
 
+    func testWeekendsHiddenByDefault() async {
+        let store = await connectedStore()
+        XCTAssertFalse(store.showWeekends)
+        XCTAssertEqual(store.visibleWeekDays.count, 5)
+        XCTAssertFalse(store.visibleWeekDays.contains { Calendar.current.isDateInWeekend($0.date()) })
+        store.setShowWeekends(true)
+        XCTAssertEqual(store.visibleWeekDays.count, 7)
+        XCTAssertTrue(settings.showWeekends)
+    }
+
     func testSetupPhaseWithoutToken() {
         let store = TimeStore(settings: settings, tokenStore: MemoryTokenStore(), makeAPI: { [api] _ in api! })
         store.bootstrap()

@@ -208,7 +208,7 @@ struct DayStripView: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(store.weekDays, id: \.self) { day in
+            ForEach(store.visibleWeekDays, id: \.self) { day in
                 let selected = day == store.selectedDay
                 let isToday = day == store.today
                 Button { store.selectedDay = day } label: {
