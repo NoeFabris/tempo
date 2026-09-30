@@ -33,11 +33,13 @@ final class MockAPI: ProductiveAPI, @unchecked Sendable {
         return e
     }
 
-    func updateTimeEntry(id: String, minutes: Int?, note: String?) async throws -> TimeEntry {
-        try check("update \(id) \(minutes.map(String.init) ?? "-")")
+    func updateTimeEntry(id: String, changes: EntryChanges) async throws -> TimeEntry {
+        try check("update \(id) \(changes.minutes.map(String.init) ?? "-")")
         let i = entries.firstIndex { $0.id == id }!
-        if let minutes { entries[i].minutes = minutes }
-        if let note { entries[i].note = note }
+        if let minutes = changes.minutes { entries[i].minutes = minutes }
+        if let note = changes.note { entries[i].note = note }
+        if let day = changes.day { entries[i].day = day }
+        if let serviceID = changes.serviceID { entries[i].service = services.first { $0.id == serviceID } ?? Service(id: serviceID, name: "S") }
         return entries[i]
     }
 
@@ -229,6 +231,31 @@ final class TimeStoreTests: XCTestCase {
         let deleted = await store.deleteEntry(store.entries[0])
         XCTAssertTrue(deleted)
         XCTAssertTrue(store.entries.isEmpty)
+    }
+
+    func testEditServiceAndDate() async {
+        let other = Service(id: "9002", name: "Internal meetings")
+        api.services = [cro, other]
+        api.entries = [TimeEntry(id: "501", day: Day(Date()), minutes: 30, note: "", service: cro)]
+        let store = await connectedStore()
+        let yesterday = Day(Date()).adding(days: -1)
+        let ok = await store.updateEntry(store.entries[0], changes: EntryChanges(serviceID: other.id, day: yesterday))
+        XCTAssertTrue(ok)
+        XCTAssertEqual(store.entries[0].service.id, other.id)
+        XCTAssertEqual(store.entries[0].day, yesterday)
+        XCTAssertEqual(store.entries[0].minutes, 30, "time does not change")
+    }
+
+    func testRunningEntryOnlyChangesNote() async {
+        let other = Service(id: "9002", name: "Internal meetings")
+        api.services = [cro, other]
+        api.entries = [TimeEntry(id: "501", day: Day(Date()), minutes: 30, note: "", service: cro)]
+        api.timers = [RunningTimer(id: "7001", startedAt: Date(), timeEntryID: "501")]
+        let store = await connectedStore()
+        _ = await store.updateEntry(store.entries[0], changes: EntryChanges(minutes: 5, note: "QA", serviceID: other.id))
+        XCTAssertEqual(api.entries[0].service.id, cro.id)
+        XCTAssertEqual(api.entries[0].minutes, 30)
+        XCTAssertEqual(api.entries[0].note, "QA")
     }
 
     func testFavouriteReplacementAfterBudgetChange() async {

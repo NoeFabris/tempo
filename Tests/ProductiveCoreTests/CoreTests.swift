@@ -24,7 +24,7 @@ final class MappingTests: XCTestCase {
         XCTAssertFalse(first.isLocked)
 
         XCTAssertEqual(entries[1].note, "")
-        XCTAssertTrue(entries[1].isLocked, "approved entries are locked")
+        XCTAssertFalse(entries[1].isLocked, "approved entries can still be editable")
         XCTAssertEqual(entries[1].service.context, "")
         XCTAssertEqual(doc.totalPages, 1)
     }

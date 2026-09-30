@@ -20,7 +20,9 @@ public enum Mapping {
         let serviceID = r.related("service")
         let service = index.resource(serviceID).map { Mapping.service($0, index) }
             ?? Service(id: serviceID?.id ?? "", name: "Unknown service")
-        let locked = (r[attribute: "approved"]?.bool ?? false) || (r[attribute: "invoiced"]?.bool ?? false)
+        // Only invoiced entries are surely locked. Approved entries (often auto-approved) can still be
+        // editable, depending on the organisation's approval policy; Productive refuses the change if not.
+        let locked = r[attribute: "invoiced"]?.bool ?? false
         return TimeEntry(
             id: r.id,
             day: day,

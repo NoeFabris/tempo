@@ -6,29 +6,44 @@ import SwiftUI
 /// Which popup screen shows.
 @MainActor
 final class Navigator: ObservableObject {
-    enum PickerMode: Equatable { case start, add }
+    enum PickerMode: Equatable {
+        case start
+        /// Pick the service of the entry form (`nil` = new entry, else the id of the edited entry).
+        case form(String?)
+    }
     enum Screen: Equatable {
         case main
         case picker(PickerMode)
         /// The manual entry form. Its values live in `draft`, so they survive a trip to the picker.
         case add
-        /// Edit the entry with this id. The form reads the current entry from the store.
+        /// Edit the entry with this id. The values live in `draft`.
         case edit(String)
         case settings
     }
 
     struct EntryDraft: Equatable {
         var service: Service?
+        var day: Day?
         var time = ""
         var note = ""
+        /// The edited entry as it was when the form opened. Only changed fields are sent.
+        var original: TimeEntry?
+        var originalTime = ""
     }
 
     @Published var screen: Screen = .main
     @Published var draft = EntryDraft()
 
-    func startAdd(service: Service?) {
-        draft = EntryDraft(service: service)
+    func startAdd(service: Service?, day: Day) {
+        draft = EntryDraft(service: service, day: day)
         screen = .add
+    }
+
+    func startEdit(_ entry: TimeEntry, liveMinutes: Int) {
+        let time = TimeFormat.hm(liveMinutes)
+        draft = EntryDraft(service: entry.service, day: entry.day, time: time, note: entry.note,
+                           original: entry, originalTime: time)
+        screen = .edit(entry.id)
     }
 }
 

@@ -12,7 +12,7 @@ struct ServicePickerView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScreenHeader(bold: mode == .start ? "Start" : "Pick", italic: mode == .start ? "a timer" : "a service",
-                         back: mode == .start ? .main : .add)
+                         back: backScreen)
 
             HStack(spacing: 6) {
                 TextField("Search client, project or service", text: $query)
@@ -120,9 +120,17 @@ struct ServicePickerView: View {
         case .start:
             nav.screen = .main
             Task { await store.start(service) }
-        case .add:
+        case .form:
             nav.draft.service = service
-            nav.screen = .add
+            nav.screen = backScreen
+        }
+    }
+
+    private var backScreen: Navigator.Screen {
+        switch mode {
+        case .start: return .main
+        case .form(nil): return .add
+        case .form(let id?): return .edit(id)
         }
     }
 }

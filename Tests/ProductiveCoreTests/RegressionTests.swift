@@ -24,8 +24,8 @@ final class GatedAPI: ProductiveAPI, @unchecked Sendable {
         if holdCreate { holdCreate = false; await withCheckedContinuation { gate = $0 } }
         return try await inner.createTimeEntry(personID: personID, serviceID: serviceID, day: day, minutes: minutes, note: note)
     }
-    func updateTimeEntry(id: String, minutes: Int?, note: String?) async throws -> TimeEntry {
-        try await inner.updateTimeEntry(id: id, minutes: minutes, note: note)
+    func updateTimeEntry(id: String, changes: EntryChanges) async throws -> TimeEntry {
+        try await inner.updateTimeEntry(id: id, changes: changes)
     }
     func deleteTimeEntry(id: String) async throws { try await inner.deleteTimeEntry(id: id) }
     func startTimer(timeEntryID: String) async throws -> RunningTimer { try await inner.startTimer(timeEntryID: timeEntryID) }

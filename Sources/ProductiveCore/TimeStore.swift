@@ -538,15 +538,22 @@ public final class TimeStore: ObservableObject {
         }
     }
 
-    /// `minutes: nil` keeps the time. `minutes` is ignored for the running entry: the timer owns its time.
     public func updateEntry(_ entry: TimeEntry, minutes: Int?, note: String?) async -> Bool {
+        await updateEntry(entry, changes: EntryChanges(minutes: minutes, note: note))
+    }
+
+    /// Nil fields keep their value. For the running entry, only the note can change:
+    /// the timer owns its time, service and date.
+    public func updateEntry(_ entry: TimeEntry, changes: EntryChanges) async -> Bool {
         guard !entry.isLocked, !entry.isPending else { return false }
         generation += 1
         return await serial { [weak self] in
             guard let self, let api = self.api else { return false }
-            let isRunningEntry = self.timer?.timeEntryID == entry.id
+            var changes = changes
+            if self.timer?.timeEntryID == entry.id { changes = EntryChanges(note: changes.note) }
+            guard !changes.isEmpty else { return true }
             do {
-                let updated = try await api.updateTimeEntry(id: entry.id, minutes: isRunningEntry ? nil : minutes, note: note)
+                let updated = try await api.updateTimeEntry(id: entry.id, changes: changes)
                 if let i = self.entries.firstIndex(where: { $0.id == entry.id }) { self.entries[i] = updated }
                 return true
             } catch {

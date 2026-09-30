@@ -74,7 +74,7 @@ public struct TimeEntry: Identifiable, Equatable, Sendable {
     public var minutes: Int
     public var note: String
     public var service: Service
-    /// Approved or invoiced entries cannot change.
+    /// Invoiced entries cannot change.
     public var isLocked: Bool
 
     public init(id: String, day: Day, minutes: Int, note: String, service: Service, isLocked: Bool = false) {

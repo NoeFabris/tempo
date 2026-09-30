@@ -226,7 +226,7 @@ struct DayEntriesView: View {
                             .padding(.vertical, 18)
                     }
                     ForEach(list) { entry in EntryRow(entry: entry) }
-                    Button { nav.startAdd(service: store.lastService) } label: {
+                    Button { nav.startAdd(service: store.lastService, day: store.selectedDay) } label: {
                         Label("Add entry", systemImage: "plus")
                             .font(Brand.font(12, .semibold))
                             .foregroundStyle(Brand.violet)
@@ -284,9 +284,9 @@ struct EntryRow: View {
                     .frame(width: 24).help("Not in Productive yet. It syncs when the connection is back.")
             } else if entry.isLocked {
                 Image(systemName: "lock.fill").font(.system(size: 10)).foregroundStyle(Brand.secondary)
-                    .frame(width: 24).help("Approved or invoiced: this entry cannot change")
+                    .frame(width: 24).help("Invoiced: this entry cannot change")
             } else {
-                IconButton(systemName: "pencil", help: "Edit") { nav.screen = .edit(entry.id) }
+                IconButton(systemName: "pencil", help: "Edit") { nav.startEdit(entry, liveMinutes: store.liveMinutes(entry)) }
                 IconButton(systemName: "trash", help: "Delete") { confirmDelete = true }
             }
         }

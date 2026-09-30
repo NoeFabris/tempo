@@ -35,6 +35,29 @@ public enum ProductiveError: Error, LocalizedError, Equatable {
     public var isNetwork: Bool { self == .offline }
 }
 
+/// The fields of a time entry to change. A nil field does not change.
+public struct EntryChanges: Equatable, Sendable {
+    public var minutes: Int?
+    public var note: String?
+    public var serviceID: String?
+    public var day: Day?
+
+    public init(minutes: Int? = nil, note: String? = nil, serviceID: String? = nil, day: Day? = nil) {
+        self.minutes = minutes
+        self.note = note
+        self.serviceID = serviceID
+        self.day = day
+    }
+
+    public var isEmpty: Bool { minutes == nil && note == nil && serviceID == nil && day == nil }
+}
+
+extension ProductiveAPI {
+    func updateTimeEntry(id: String, minutes: Int?, note: String?) async throws -> TimeEntry {
+        try await updateTimeEntry(id: id, changes: EntryChanges(minutes: minutes, note: note))
+    }
+}
+
 /// Everything the app needs from Productive. `TimeStore` depends on this protocol only.
 public protocol ProductiveAPI: Sendable {
     func me() async throws -> Person
@@ -42,7 +65,7 @@ public protocol ProductiveAPI: Sendable {
     func timeEntries(personID: String, from: Day, to: Day) async throws -> [TimeEntry]
     func trackableServices(personID: String) async throws -> [Service]
     func createTimeEntry(personID: String, serviceID: String, day: Day, minutes: Int, note: String) async throws -> TimeEntry
-    func updateTimeEntry(id: String, minutes: Int?, note: String?) async throws -> TimeEntry
+    func updateTimeEntry(id: String, changes: EntryChanges) async throws -> TimeEntry
     func deleteTimeEntry(id: String) async throws
     func startTimer(timeEntryID: String) async throws -> RunningTimer
     func stopTimer(id: String) async throws -> RunningTimer
@@ -128,11 +151,16 @@ public final class ProductiveClient: ProductiveAPI, @unchecked Sendable {
         return try await entry(from: send("POST", "time_entries", query: ["include": Self.entryInclude], body: body))
     }
 
-    public func updateTimeEntry(id: String, minutes: Int?, note: String?) async throws -> TimeEntry {
+    public func updateTimeEntry(id: String, changes: EntryChanges) async throws -> TimeEntry {
         var attributes: [String: Any] = [:]
-        if let minutes { attributes["time"] = minutes }
-        if let note { attributes["note"] = note }
-        let body: [String: Any] = ["data": ["type": "time_entries", "id": id, "attributes": attributes]]
+        if let minutes = changes.minutes { attributes["time"] = minutes }
+        if let note = changes.note { attributes["note"] = note }
+        if let day = changes.day { attributes["date"] = day.iso }
+        var data: [String: Any] = ["type": "time_entries", "id": id, "attributes": attributes]
+        if let serviceID = changes.serviceID {
+            data["relationships"] = ["service": ["data": ["type": "services", "id": serviceID]]]
+        }
+        let body: [String: Any] = ["data": data]
         return try await entry(from: send("PATCH", "time_entries/\(id)", query: ["include": Self.entryInclude], body: body))
     }
 

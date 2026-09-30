@@ -27,12 +27,16 @@ enum PreviewRenderer {
                 for (name, screen) in stopped { render(store, screen, scheme, dir, name) }
             }
             await store.start(api.services[0])
+            let editEntry = store.entries.first { $0.service.id == api.services[1].id && !$0.isLocked }!
             let running: [(String, Navigator.Screen)] = [
-                ("main-running", .main), ("picker", .picker(.start)),
-                ("edit", .edit(store.entries.first { $0.service.id == api.services[1].id }!.id)), ("settings", .settings),
+                ("main-running", .main), ("picker", .picker(.start)), ("edit", .edit(editEntry.id)), ("settings", .settings),
             ]
             for scheme in [ColorScheme.dark, .light] {
-                for (name, screen) in running { render(store, screen, scheme, dir, name) }
+                for (name, screen) in running {
+                    render(store, screen, scheme, dir, name) { nav in
+                        if case .edit = screen { nav.startEdit(editEntry, liveMinutes: editEntry.minutes) }
+                    }
+                }
             }
             store.signOut()
             for scheme in [ColorScheme.dark, .light] { render(store, .main, scheme, dir, "setup") }
@@ -41,8 +45,10 @@ enum PreviewRenderer {
         while group.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
     }
 
-    private static func render(_ store: TimeStore, _ screen: Navigator.Screen, _ scheme: ColorScheme, _ dir: URL, _ name: String) {
+    private static func render(_ store: TimeStore, _ screen: Navigator.Screen, _ scheme: ColorScheme, _ dir: URL, _ name: String,
+                               prepare: (Navigator) -> Void = { _ in }) {
         let nav = Navigator()
+        prepare(nav)
         nav.screen = screen
         let view = PopoverRootView().environmentObject(store).environmentObject(nav).environment(\.colorScheme, scheme)
         let host = NSHostingView(rootView: view)
@@ -100,7 +106,7 @@ private final class SampleAPI: ProductiveAPI, @unchecked Sendable {
         entries.append(e)
         return e
     }
-    func updateTimeEntry(id: String, minutes: Int?, note: String?) async throws -> TimeEntry { entries.first { $0.id == id }! }
+    func updateTimeEntry(id: String, changes: EntryChanges) async throws -> TimeEntry { entries.first { $0.id == id }! }
     func deleteTimeEntry(id: String) async throws {}
     func startTimer(timeEntryID: String) async throws -> RunningTimer {
         let t = RunningTimer(id: "t1", startedAt: Date().addingTimeInterval(-(24 * 60 + 5)), timeEntryID: timeEntryID)
