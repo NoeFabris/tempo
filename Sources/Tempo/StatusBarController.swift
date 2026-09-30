@@ -63,6 +63,9 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     /// A click on the status item first closes a transient popover (on mouse down), then arrives
     /// here (on mouse up). Without this guard, that click would open the popover again.
     private var popoverClosedAt = Date.distantPast
+    /// The app that was in front before the popover opened. It gets the focus back when the popover
+    /// closes, so a full-screen app stays the active app and macOS hides the menu bar again.
+    private var previousApp: NSRunningApplication?
 
     private static let iconSize = NSSize(width: 20, height: 16)
 
@@ -128,13 +131,22 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         popoverClosedAt = Date()
         // Opening the popover makes Tempo the active app. An active app without a full-screen window
-        // makes macOS show the menu bar over full-screen apps, so give the focus back.
-        if NSApp.isActive { NSApp.hide(nil) }
+        // makes macOS show the menu bar over full-screen apps, so give the focus back to the app that
+        // had it. `hide(nil)` lets macOS pick the next app, which is not always the full-screen one.
+        guard NSApp.isActive else { return }
+        if let previousApp, previousApp != .current, !previousApp.isTerminated {
+            NSApp.yieldActivation(to: previousApp)
+            previousApp.activate()
+        } else {
+            NSApp.hide(nil)
+        }
+        previousApp = nil
     }
 
     func showPopover(_ screen: Navigator.Screen = .main) {
         guard let button = timeItem.button else { return }
         nav.screen = screen
+        if !NSApp.isActive { previousApp = NSWorkspace.shared.frontmostApplication }
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
