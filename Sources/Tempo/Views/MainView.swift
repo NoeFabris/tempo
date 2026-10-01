@@ -405,6 +405,7 @@ struct EntryDetailLine: View {
 struct FooterBar: View {
     @EnvironmentObject var store: TimeStore
     @EnvironmentObject var nav: Navigator
+    @EnvironmentObject var updates: UpdateController
 
     var body: some View {
         HStack(spacing: 6) {
@@ -412,6 +413,11 @@ struct FooterBar: View {
             IconButton(systemName: "arrow.clockwise", help: "Refresh") { Task { await store.refresh() } }
                 .rotationEffect(.degrees(store.isLoading ? 180 : 0))
                 .animation(.easeInOut(duration: 0.4), value: store.isLoading)
+            if updates.updateAvailable {
+                IconButton(systemName: "arrow.down.circle", help: "Update available", tint: Brand.violet) {
+                    updates.checkForUpdates()
+                }
+            }
             if let status {
                 Button { store.clearError() } label: {
                     Text("⚠︎ " + status).font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)

@@ -73,6 +73,7 @@ struct ConnectionForm: View {
 
 struct SettingsView: View {
     @EnvironmentObject var store: TimeStore
+    @EnvironmentObject var updates: UpdateController
     @State private var target = ""
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
@@ -151,6 +152,16 @@ struct SettingsView: View {
                         }
                     }
 
+                    group("About") {
+                        HStack {
+                            Text("Version \(updates.version)").font(Brand.font(13))
+                            Spacer()
+                            Button("Check for updates…") { updates.checkForUpdates() }
+                                .buttonStyle(SecondaryButtonStyle())
+                                .disabled(!updates.canCheckForUpdates)
+                        }
+                    }
+
                     Button("Sign out") { store.signOut() }
                         .buttonStyle(SecondaryButtonStyle())
                 }
@@ -179,7 +190,7 @@ struct SettingsView: View {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             loginError = nil
         } catch {
-            loginError = "macOS did not allow this: \(error.localizedDescription). Move Tempo to Applications and try again."
+            loginError = "macOS did not allow this: \(error.localizedDescription). Move Tempo to your Applications folder (~/Applications) and try again."
             launchAtLogin = SMAppService.mainApp.status == .enabled
         }
     }
