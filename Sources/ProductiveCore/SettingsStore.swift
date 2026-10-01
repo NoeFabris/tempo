@@ -37,6 +37,59 @@ public struct KeychainStore: Sendable {
     }
 }
 
+/// Stores the API token in a file that only the user can read (folder 0700, file 0600):
+/// ~/Library/Application Support/Tempo/token. Chosen over the Keychain because locally built,
+/// unsigned versions made macOS ask for the password after every build.
+/// The first read moves a token that an older version saved in the Keychain.
+public struct FileTokenStore: TokenStoring {
+    public let url: URL
+    private let legacy: KeychainStore?
+
+    public init(directory: URL? = nil, migrateFrom legacy: KeychainStore? = KeychainStore()) {
+        let base = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Tempo", isDirectory: true)
+        url = base.appendingPathComponent("token")
+        self.legacy = legacy
+    }
+
+    public func read() -> String? {
+        if let data = try? Data(contentsOf: url), let token = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
+            return token
+        }
+        // One-time move from the Keychain (older versions).
+        guard let legacy, let token = legacy.read(), !token.isEmpty, write(token) else { return nil }
+        legacy.write("")
+        return token
+    }
+
+    @discardableResult
+    public func write(_ token: String) -> Bool {
+        let fm = FileManager.default
+        guard !token.isEmpty else {
+            try? fm.removeItem(at: url)
+            return true
+        }
+        do {
+            let dir = url.deletingLastPathComponent()
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+            // Create with 0600 before the token is written, so it is never readable by others.
+            if !fm.fileExists(atPath: url.path) {
+                guard fm.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]) else { return false }
+            }
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            let handle = try FileHandle(forWritingTo: url)
+            defer { try? handle.close() }
+            try handle.truncate(atOffset: 0)
+            try handle.write(contentsOf: Data(token.utf8))
+            return true
+        } catch {
+            return false
+        }
+    }
+}
+
 /// Non-secret settings, kept in UserDefaults.
 public final class SettingsStore: @unchecked Sendable {
     private let defaults: UserDefaults

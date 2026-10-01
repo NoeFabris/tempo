@@ -6,6 +6,7 @@ public protocol TokenStoring: Sendable {
 }
 
 extension KeychainStore: TokenStoring {}
+extension FileTokenStore: Sendable {}
 
 /// A start or stop that could not reach Productive. Sent at the next successful refresh.
 /// Every action sends absolute minutes, so a retry after a partial failure gives the same result.
@@ -87,7 +88,7 @@ public final class TimeStore: ObservableObject {
     private var autoNoted: Set<String> = []
 
     public init(settings: SettingsStore = SettingsStore(),
-                tokenStore: TokenStoring = KeychainStore(),
+                tokenStore: TokenStoring = FileTokenStore(),
                 makeAPI: @escaping (ProductiveConfig) -> ProductiveAPI = { ProductiveClient(config: $0) },
                 clock: @escaping () -> Date = Date.init) {
         self.settings = settings
@@ -111,7 +112,7 @@ public final class TimeStore: ObservableObject {
     public var today: Day { Day(now) }
     public var isRunning: Bool { timer != nil }
     public var organizationID: String { settings.organizationID }
-    /// The token is read from the Keychain once per launch (a read can show a macOS dialog).
+    /// The token is read once per launch.
     private var cachedToken: String?
     public var hasStoredToken: Bool { !(cachedToken ?? "").isEmpty }
     public var lastService: Service? { settings.lastService }

@@ -23,21 +23,21 @@ A small macOS menu bar timer for [Productive](https://productive.io), similar to
    with read/write access.
 4. Paste the token and your organisation ID into Tempo, then click **Test connection**.
 
-The token stays in your macOS Keychain. The app sends it only to `api.productive.io`.
+The token is stored in `~/Library/Application Support/Tempo/token`, readable only by your user
+(folder 0700, file 0600). The app sends it only to `api.productive.io`. Sign out deletes it.
 
 ## Build
 
 Requires Xcode (Swift 6) on macOS 14 or later.
 
 ```sh
-scripts/make-signing-cert.sh   # once: a local signing identity, so the Keychain asks only once
+scripts/make-signing-cert.sh   # optional, once: a stable local signing identity
 swift test                     # unit tests
 scripts/build-app.sh           # dist/Tempo.app and dist/Tempo.zip (universal)
 open dist/Tempo.app
 ```
 
-Without the local identity, builds are signed ad hoc and macOS asks for Keychain access after
-every rebuild.
+Without the local identity, builds are signed ad hoc.
 
 To sign and notarise for the whole team:
 
