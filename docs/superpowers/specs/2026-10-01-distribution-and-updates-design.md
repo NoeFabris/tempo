@@ -54,7 +54,7 @@ Repository: `github.com/NoeFabris/tempo` (public). The slug is a default constan
 | `scripts/build-app.sh` (extended) | Builds the universal app, embeds `Sparkle.framework`, writes `Info.plist`, signs ad hoc, zips. Verifies its own output. | `VERSION`, `REPO` → `dist/Tempo.app`, `dist/Tempo.zip` |
 | `scripts/release.sh` (new) | Extends the previous `appcast.xml` with an EdDSA-signed item, writes release notes, creates the GitHub release. Same script locally and in CI. | `VERSION`, key → release with `Tempo.zip` + `appcast.xml` |
 | `.github/workflows/release.yml` (new) | Runs tests and `release.sh` on `macos-26` when a tag `v*` is pushed. | tag → release |
-| `.github/workflows/ci.yml` (new) | Runs tests and a host-only packaging on pushes to `main`. Catches toolchain differences early. | push → green/red |
+| `.github/workflows/ci.yml` (new) | Runs tests and the universal packaging (the release configuration) on pushes to `main` and on pull requests. Catches toolchain differences early. | push → green/red |
 | `install.sh` (new, repo root) | Downloads the latest zip with `curl`, installs to `~/Applications`, opens the app. | — → installed app |
 | `README.md`, `docs/release.md` | One-line install for coworkers. A release runbook for the maintainer. | — |
 

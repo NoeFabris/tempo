@@ -59,7 +59,8 @@ GitHub release and leaves `feed/` for inspection.
 ## Restore the key
 
 Use this on a new Mac, after a lost Keychain, or when the Actions secret is gone. Run it in the
-repository root, in one Terminal window. Copy the private key from the password manager first.
+repository root, in one Terminal window; on a new Mac, run `swift build` first (step 1 of One-time
+setup) so that `generate_keys` exists. Copy the private key from the password manager first.
 
 ```sh
 GK="$(find .build/artifacts -type f -name generate_keys | head -1)"
