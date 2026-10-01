@@ -104,14 +104,23 @@ struct PrimaryButtonStyle: ButtonStyle {
 
 struct SecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Brand.font(13, .medium))
-            .foregroundStyle(Brand.text)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 8).stroke(Brand.separator))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
-            .opacity(configuration.isPressed ? 0.7 : 1)
+        StyledSecondary(configuration: configuration)
+    }
+
+    private struct StyledSecondary: View {
+        let configuration: Configuration
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .font(Brand.font(13, .medium))
+                .foregroundStyle(Brand.text)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 8).stroke(Brand.separator))
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .opacity(isEnabled ? (configuration.isPressed ? 0.7 : 1) : 0.4)
+        }
     }
 }
 
