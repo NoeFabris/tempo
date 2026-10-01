@@ -21,7 +21,7 @@
 - Install location: `~/Applications`. The installer never touches `/Applications`.
 - Runner: `macos-26`. Never `macos-14`.
 - The EdDSA private key never enters the repository. The public key is the constant `SU_PUBLIC_ED_KEY` in `scripts/build-app.sh`.
-- Zip: `ditto -c -k --sequesterRsrc --keepParent`. The zip contains only `Tempo.app/…` entries.
+- Zip: `ditto -c -k --norsrc --keepParent` (changed from `--sequesterRsrc` during execution; see Execution notes). The zip contains only `Tempo.app/…` entries.
 - Commit messages: `type: lowercase summary` (`feat`, `fix`, `chore`, `docs`, `ci`), ending with the trailer `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 - Shell scripts: `scripts/*.sh` are bash (`#!/bin/bash`, `set -euo pipefail`, no empty-array expansion under `set -u` because macOS bash is 3.2). `install.sh` is POSIX `sh` (`set -eu`, no arrays, no `local`).
 
@@ -32,6 +32,19 @@
 3. **The placeholder public key** (`SU_PUBLIC_ED_KEY="REPLACE_ME"`): `build-app.sh` must refuse to build; an app without a key could never update. Pinned in Task 4, Step 3.
 4. **Malformed versions** (`VERSION=1.0.0-beta`, `VERSION=v0.0.1`, empty): `release.sh` must reject the first and the empty value, and must accept a `v` prefix by stripping it. Pinned in Task 5, Step 5.
 5. **A failed download** (`install.sh` with an unreachable URL): the script must stop before it quits or replaces anything; the existing install stays unchanged. Pinned in Task 7, Step 4.
+
+## Execution notes (2026-10-01)
+
+Rulings made while executing this plan. The task code blocks below are the original plan text; the
+committed scripts differ where these notes say so.
+
+- Commit trailer: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (the harness changed the attribution).
+- Task 4: `build-app.sh` zips with `--norsrc` (`--sequesterRsrc` stores metadata in `__MACOSX`); the
+  `VERSION` default survives a repository without tags under `pipefail`; the rpath check uses
+  `grep … >/dev/null` instead of `grep -q` (SIGPIPE under `pipefail`).
+- Task 5: `release.sh` reads `<sparkle:version>` as an element and checks the new item's
+  `sparkle:edSignature`; the test key is exported to `$TMPDIR`, not `/tmp`.
+- Task 9: appcast checks use the element form `<sparkle:version>…</sparkle:version>`.
 
 ---
 

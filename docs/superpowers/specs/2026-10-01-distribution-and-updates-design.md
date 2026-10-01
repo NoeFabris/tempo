@@ -218,8 +218,9 @@ Steps:
 6. Self-checks, each fatal: `codesign --verify --deep --strict "$APP"`; `plutil -lint` on the plist;
    `otool -l` shows the rpath; `Sparkle.framework/Versions/B/Autoupdate` is executable;
    `lipo -archs` lists `x86_64 arm64` when universal; `SU_PUBLIC_ED_KEY` is not the placeholder.
-7. `ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"`. `--sequesterRsrc` keeps the `._*`
-   AppleDouble entries out of the zip.
+7. `ditto -c -k --norsrc --keepParent "$APP" "$ZIP"`. `--norsrc` leaves resource forks and extended
+   attributes out of the zip, so it holds only `Tempo.app/` entries. (`--sequesterRsrc` would store them
+   in a `__MACOSX` folder, and every file here carries `com.apple.provenance`.)
 
 Removed: the `DEVELOPER_ID` / `NOTARY_PROFILE` branch. With Sparkle embedded it would also have to
 re-sign the nested items; it cannot be tested without a Developer ID. §11 records how to add it.
@@ -250,8 +251,10 @@ Steps, each fatal on failure:
    preceded by `printf '%s' "$SPARKLE_PRIVATE_KEY" |` and `--ed-key-file -` when the variable is set.
    The tool reuses `feed/appcast.xml`, keeps the items whose archives are absent (their enclosures still
    point at their own tags), adds the new item, and keeps the three newest items by default.
-6. Check the result: `feed/appcast.xml` contains `sparkle:version="$VERSION"` and
-   `releases/download/v$VERSION/Tempo.zip`.
+6. Check the result: `feed/appcast.xml` contains `<sparkle:version>$VERSION</sparkle:version>` (an element,
+   as `generate_appcast` writes it), and the new item's enclosure `releases/download/v$VERSION/Tempo.zip`
+   carries `sparkle:edSignature`. `generate_appcast` exits 0 and leaves the item unsigned when the key does
+   not match `SUPublicEDKey`, so this check is the one that catches a wrong key.
 7. Unless `DRY_RUN`: `gh release create "v$VERSION" feed/Tempo.zip feed/appcast.xml --repo "$REPO" --title "Tempo $VERSION" --notes-file feed/Tempo.md --verify-tag`.
    A release that already exists makes this fail; the script does not overwrite releases.
 

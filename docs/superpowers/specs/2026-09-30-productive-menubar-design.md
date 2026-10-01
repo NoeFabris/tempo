@@ -132,5 +132,5 @@ to the click time).
 
 ## Distribution
 
-`scripts/build-app.sh` builds a release `.app`, signs ad hoc (or with
-`DEVELOPER_ID` when set) and zips it. Unsigned builds need right-click > Open once.
+See `2026-10-01-distribution-and-updates-design.md`: public GitHub releases, a `curl`-based installer
+into `~/Applications`, and Sparkle updates signed with EdDSA.
