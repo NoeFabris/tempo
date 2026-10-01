@@ -46,6 +46,10 @@ committed scripts differ where these notes say so.
   `sparkle:edSignature`; the test key is exported to `$TMPDIR`, not `/tmp`.
 - Task 8: the runbook's key export clears the clipboard after the paste and uses plain `rm` (`rm -P` has
   no effect on this Mac); spec §7.4 now says `$TMPDIR`, not `/tmp`.
+- Task 3: `SecondaryButtonStyle` in `Brand.swift` reads `isEnabled` and dims a disabled button (opacity
+  0.4), like `PrimaryButtonStyle`.
+- Final review: CI builds the universal release configuration; the runbook has a key-restore path and a
+  recovery for a failed Release run; the early-build bundle id is no longer named.
 - Task 9: appcast checks use the element form `<sparkle:version>…</sparkle:version>`.
 
 ---
@@ -928,8 +932,8 @@ The token is stored in `~/Library/Application Support/Tempo/token`, readable onl
 (folder 0700, file 0600). The app sends it only to `api.productive.io`. Sign out deletes it.
 
 **Updates.** Tempo checks for a new version once a day. Click **Install and Relaunch** when it asks,
-or use **Settings › Check for updates…**. If you used an early build (bundle id
-`com.example.tempo`), enter the organisation ID and the token once more after the install.
+or use **Settings › Check for updates…**. If you used an early build of Tempo, enter the
+organisation ID once more after the install. The token stays.
 
 ## Build
 

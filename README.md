@@ -35,8 +35,8 @@ The token is stored in `~/Library/Application Support/Tempo/token`, readable onl
 (folder 0700, file 0600). The app sends it only to `api.productive.io`. Sign out deletes it.
 
 **Updates.** Tempo checks for a new version once a day. Click **Install and Relaunch** when it asks,
-or use **Settings › Check for updates…**. If you used an early build (bundle id
-`com.example.tempo`), enter the organisation ID and the token once more after the install.
+or use **Settings › Check for updates…**. If you used an early build of Tempo, enter the
+organisation ID once more after the install. The token stays.
 
 ## Build
 

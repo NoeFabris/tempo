@@ -40,7 +40,7 @@ Researched on 2026-10-01 (sources in §15).
 - Homebrew, Mac App Store, DMG or pkg installers.
 - Delta updates, update channels, pre-releases, silent automatic installs.
 - An app icon. It can be added independently; Sparkle's alert then shows it.
-- A settings migration from the old bundle id `com.example.tempo`.
+- A settings migration from the bundle id of early test builds.
 
 ## 4. Architecture
 
@@ -63,7 +63,7 @@ Repository: `github.com/NoeFabris/tempo` (public). The slug is a default constan
 ### Data flows
 
 ```
-RELEASE   maintainer: git tag v1.2.0 && git push --tags
+RELEASE   maintainer: git tag v1.2.0 && git push origin main v1.2.0
           → Actions (macos-26) → swift test → release.sh → build-app.sh → Tempo.zip
           → generate_appcast (EdDSA key from the secret) → appcast.xml
           → gh release create v1.2.0 Tempo.zip appcast.xml
@@ -291,7 +291,8 @@ jobs:
 ### 7.3 `.github/workflows/ci.yml`
 
 On `push` to `main` and on pull requests: `macos-26`, `actions/checkout@v7`, `swift test`,
-`ARCHS=host VERSION=0.0.0 scripts/build-app.sh`. Public repositories get these minutes free.
+`VERSION=0.0.0 scripts/build-app.sh` (universal, the same configuration as a release). Public
+repositories get these minutes free.
 
 ### 7.4 Keys and secrets (one-time, by the maintainer)
 
@@ -310,7 +311,7 @@ manager copy restores both.
 ### 7.5 Release runbook (`docs/release.md`)
 
 1. Commit on `main`. Make sure `ci.yml` is green.
-2. `git tag v1.2.0 && git push origin main --tags`.
+2. `git tag v1.2.0 && git push origin main v1.2.0`.
 3. Watch the Release workflow. The release appears at `github.com/<REPO>/releases/tag/v1.2.0` with
    `Tempo.zip` and `appcast.xml`.
 4. Fallback when CI is unavailable: `VERSION=1.2.0 scripts/release.sh` on the maintainer's Mac after
@@ -356,12 +357,12 @@ README changes:
 |---|---|
 | Private key lost everywhere | No key rotation without Developer ID. Coworkers rerun the install command; the new app carries the new public key. Three copies of the key (§4) make this unlikely. |
 | Release created, assets not yet uploaded (seconds) | `latest/download/appcast.xml` returns 404. Sparkle treats it as a failed check and retries at the next interval. |
-| CI toolchain differs from Xcode 27 locally | `ci.yml` fails on the next push, not at release time. Fix the code or select another Xcode on the image. |
+| CI toolchain differs from Xcode 27 locally | `ci.yml` builds the same universal configuration as a release, so it fails on the next push, not at release time. Fix the code or select another Xcode on the image. |
 | Universal build fails | `build-app.sh` stops with the compiler output. No silent host-only release. |
 | Tag does not point at HEAD, or version not greater than the feed | `release.sh` stops before building. |
 | Release for this tag already exists | `gh release create` fails; nothing is overwritten. |
 | Old manual copy in `/Applications` | `install.sh` warns. Two copies would confuse the login item. |
-| Coworker on the old bundle id `com.example.tempo` | Settings and token must be entered once more (already the case today). The README says so. |
+| Coworker on an early test build (another bundle id) | The organisation ID and the other settings must be entered once more; the token file stays, because its path does not depend on the bundle id. The README says so. |
 | Offline queue in memory at update time | "Install and Relaunch" is user-initiated; the user chooses the moment. Pending offline actions are lost, as on any quit. |
 | Sparkle alert hidden behind other windows | Gentle reminders: the footer hint stays until the user clicks it or the session ends. |
 | Preview, idle-preview and click-test runs | `UpdateController.start()` is not called. No network, no alerts. |
@@ -410,7 +411,8 @@ If a paid Apple Developer Program membership appears, add it without changing th
   `.github/workflows/release.yml`, `.github/workflows/ci.yml`, `docs/release.md`, `Package.resolved`.
 - Changed: `Package.swift`, `scripts/build-app.sh`, `Sources/Tempo/AppDelegate.swift`,
   `Sources/Tempo/StatusBarController.swift`, `Sources/Tempo/PreviewRenderer.swift`,
-  `Sources/Tempo/Views/SettingsView.swift`, `Sources/Tempo/Views/MainView.swift`, `README.md`,
+  `Sources/Tempo/Views/SettingsView.swift`, `Sources/Tempo/Views/MainView.swift`,
+  `Sources/Tempo/Brand.swift`, `README.md`,
   `docs/superpowers/specs/2026-09-30-productive-menubar-design.md` (Distribution section points here).
 - Manual, by the maintainer: create the public repository and push; generate the EdDSA keys; set the
   Actions secret; paste the public key; tag `v1.0.0`.
