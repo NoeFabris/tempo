@@ -69,7 +69,8 @@ enum PreviewRenderer {
         let nav = Navigator()
         prepare(nav)
         nav.screen = screen
-        let view = PopoverRootView().environmentObject(store).environmentObject(nav).environment(\.colorScheme, scheme)
+        let view = PopoverRootView().environmentObject(store).environmentObject(nav)
+            .environmentObject(UpdateController()).environment(\.colorScheme, scheme)
         let host = NSHostingView(rootView: view)
         host.frame = NSRect(x: 0, y: 0, width: 340, height: 520)
         host.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)

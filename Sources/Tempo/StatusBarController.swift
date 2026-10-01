@@ -87,7 +87,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
     /// Width of the ▶ zone at the left of the item.
     private static let playZone: CGFloat = 24
 
-    init(store: TimeStore) {
+    init(store: TimeStore, updates: UpdateController) {
         self.store = store
         super.init()
 
@@ -96,7 +96,7 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         popover.animates = false
         popover.contentSize = NSSize(width: 340, height: 520)
         popover.contentViewController = NSHostingController(
-            rootView: PopoverRootView().environmentObject(store).environmentObject(nav)
+            rootView: PopoverRootView().environmentObject(store).environmentObject(nav).environmentObject(updates)
         )
 
         item.autosaveName = "Tempo"

@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: TimeStore!
     private var statusBar: StatusBarController!
     private var idleMonitor: IdleMonitor?
+    private var updates: UpdateController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let i = CommandLine.arguments.firstIndex(of: "--render-previews"), i + 1 < CommandLine.arguments.count {
@@ -15,7 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         installEditMenu()
         store = TimeStore()
-        statusBar = StatusBarController(store: store)
+        updates = UpdateController()
+        statusBar = StatusBarController(store: store, updates: updates)
         idleMonitor = IdleMonitor(store: store) { [weak self] in self?.statusBar.itemScreenFrame }
         if CommandLine.arguments.contains("--idle-preview") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [idleMonitor] in idleMonitor?.preview() }
@@ -26,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [statusBar] in statusBar?.runClickTest() }
             return
         }
+        updates.start()   // Only a normal run gets here: the preview and test flags returned above.
         store.bootstrap()
         if store.phase == .setup {
             // The status item needs a moment to get its window before the popover can attach.
