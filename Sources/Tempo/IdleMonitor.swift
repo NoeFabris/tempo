@@ -105,6 +105,8 @@ final class IdleMonitor {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
+        panel.backgroundColor = NSColor(srgbRed: 0xF2 / 255, green: 0xFA / 255, blue: 0x7A / 255, alpha: 1)
+        panel.appearance = NSAppearance(named: .aqua)
         panel.contentView = NSHostingView(rootView: view)
         panel.setContentSize(panel.contentView!.fittingSize)
         place(panel)
@@ -131,6 +133,7 @@ final class IdleMonitor {
     }
 }
 
+/// The idle question. Mellow Yellow with black, in both themes, so it stands out on any screen.
 struct IdlePromptView: View {
     enum Choice { case keep, removeAndContinue, removeAndStop }
 
@@ -141,32 +144,53 @@ struct IdlePromptView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             let minutes = max(0, Int(store.now.timeIntervalSince(idleStart)) / 60)
-            BrandHeading(bold: "You were idle", italic: "for " + (minutes < 60 ? "\(minutes) min" : TimeFormat.hm(minutes)), size: 17)
+            HStack(spacing: 8) {
+                Image(systemName: "moon.zzz.fill").font(.system(size: 16, weight: .semibold))
+                BrandHeading(bold: "You were idle", italic: "for " + (minutes < 60 ? "\(minutes) min" : TimeFormat.hm(minutes)), size: 17)
+            }
             Text("Since \(idleStart.formatted(date: .omitted, time: .shortened)). The timer is still running.")
-                .font(Brand.font(12)).foregroundStyle(Brand.secondary)
+                .font(Brand.font(12))
             if let entry = store.runningEntry {
                 EntryLabels(entry: entry)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .card()
+                    .padding(12)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.black, lineWidth: 1))
             }
             VStack(spacing: 6) {
                 Button("Remove idle time and continue") { choose(.removeAndContinue) }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .frame(maxWidth: .infinity)
+                    .buttonStyle(InkButtonStyle(filled: true))
                     .keyboardShortcut(.defaultAction)
                 HStack(spacing: 6) {
                     Button("Remove and stop") { choose(.removeAndStop) }
-                        .buttonStyle(SecondaryButtonStyle())
+                        .buttonStyle(InkButtonStyle(filled: false))
                     Button("Keep idle time") { choose(.keep) }
-                        .buttonStyle(SecondaryButtonStyle())
+                        .buttonStyle(InkButtonStyle(filled: false))
                 }
             }
-            .frame(maxWidth: .infinity)
         }
         .padding(20)
         .padding(.top, 8)
         .frame(width: 340)
-        .background(Brand.background)
-        .foregroundStyle(Brand.text)
+        .background(Brand.yellow)
+        .foregroundStyle(Color.black)
+        // Light scheme: the shared labels resolve to black text on the yellow background.
+        .environment(\.colorScheme, .light)
+    }
+}
+
+/// Black buttons for the yellow idle question: filled (white text) or outlined (black text).
+struct InkButtonStyle: ButtonStyle {
+    let filled: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Brand.font(13, filled ? .semibold : .medium))
+            .foregroundStyle(filled ? Color.white : Color.black)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 8).fill(filled ? Color.black : Color.clear))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.black, lineWidth: filled ? 0 : 1.5))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .opacity(configuration.isPressed ? 0.75 : 1)
     }
 }

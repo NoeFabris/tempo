@@ -6,7 +6,6 @@ public protocol TokenStoring: Sendable {
 }
 
 extension KeychainStore: TokenStoring {}
-extension FileTokenStore: Sendable {}
 
 /// A start or stop that could not reach Productive. Sent at the next successful refresh.
 /// Every action sends absolute minutes, so a retry after a partial failure gives the same result.
