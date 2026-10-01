@@ -36,18 +36,22 @@ The token is stored in `~/Library/Application Support/Tempo/token`, readable onl
 
 **Updates.** Tempo checks for a new version once a day. Click **Install and Relaunch** when it asks,
 or use **Settings › Check for updates…**. If you used an early build of Tempo, enter the
-organisation ID once more after the install. The token stays.
+organisation ID and the token once more after the install.
 
 ## Build
 
 Requires Xcode (Swift 6) on macOS 14 or later.
 
 ```sh
-swift test                              # unit tests
-scripts/build-app.sh                    # dist/Tempo.app and dist/Tempo.zip (universal)
-ARCHS=host scripts/build-app.sh         # faster: this Mac's architecture only
+swift test
+scripts/build-app.sh
+ARCHS=host scripts/build-app.sh
 open dist/Tempo.app
 ```
+
+- `swift test` runs the unit tests.
+- `scripts/build-app.sh` writes `dist/Tempo.app` and `dist/Tempo.zip` (universal).
+- `ARCHS=host scripts/build-app.sh` is faster (this Mac's architecture only).
 
 Builds are signed ad hoc and embed Sparkle. Render all popup screens with sample data (no account
 needed):

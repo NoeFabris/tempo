@@ -12,9 +12,11 @@ Sparkle. The design is in `docs/superpowers/specs/2026-10-01-distribution-and-up
 
    ```sh
    GK="$(find .build/artifacts -type f -name generate_keys | head -1)"
-   "$GK"        # creates the key when none exists
-   "$GK" -p     # prints the public key
+   "$GK"
+   "$GK" -p
    ```
+
+   The first `"$GK"` creates the key when none exists; `"$GK" -p` prints the public key.
 
    The public key is the constant `SU_PUBLIC_ED_KEY` in `scripts/build-app.sh`.
 3. Export the private key and keep it in two more places. Never commit it. Run both blocks in the
@@ -60,16 +62,38 @@ GitHub release and leaves `feed/` for inspection.
 
 Use this on a new Mac, after a lost Keychain, or when the Actions secret is gone. Run it in the
 repository root, in one Terminal window; on a new Mac, run `swift build` first (step 1 of One-time
-setup) so that `generate_keys` exists. Copy the private key from the password manager first.
+setup) so that `generate_keys` exists.
+
+First check whether the login Keychain still holds the key:
 
 ```sh
 GK="$(find .build/artifacts -type f -name generate_keys | head -1)"
+"$GK" -p
+```
+
+If this prints the value of `SU_PUBLIC_ED_KEY` in `scripts/build-app.sh`, the Keychain has the key:
+skip the import. Otherwise copy the private key from the password manager and import it:
+
+```sh
 pbpaste > "$TMPDIR/sparkle-private.key"
-"$GK" -f "$TMPDIR/sparkle-private.key"     # imports the key into the login Keychain
-"$GK" -p                                   # must print the value of SU_PUBLIC_ED_KEY in scripts/build-app.sh
-gh secret set SPARKLE_PRIVATE_KEY --repo NoeFabris/tempo < "$TMPDIR/sparkle-private.key"   # only if the secret is lost
+"$GK" -f "$TMPDIR/sparkle-private.key"
+"$GK" -p
+```
+
+The last command must print the value of `SU_PUBLIC_ED_KEY`.
+
+Only if the Actions secret is lost, set it again. If you skipped the import, write the file first
+with `"$GK" -x "$TMPDIR/sparkle-private.key"`.
+
+```sh
+gh secret set SPARKLE_PRIVATE_KEY --repo NoeFabris/tempo < "$TMPDIR/sparkle-private.key"
+```
+
+Then clear the clipboard and delete the file:
+
+```sh
 pbcopy < /dev/null
-rm "$TMPDIR/sparkle-private.key"
+rm -f "$TMPDIR/sparkle-private.key"
 ```
 
 Never change `SU_PUBLIC_ED_KEY`. Installed copies accept only updates signed with the matching

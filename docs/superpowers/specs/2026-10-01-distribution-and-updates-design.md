@@ -362,7 +362,7 @@ README changes:
 | Tag does not point at HEAD, or version not greater than the feed | `release.sh` stops before building. |
 | Release for this tag already exists | `gh release create` fails; nothing is overwritten. |
 | Old manual copy in `/Applications` | `install.sh` warns. Two copies would confuse the login item. |
-| Coworker on an early test build (another bundle id) | The organisation ID and the other settings must be entered once more; the token file stays, because its path does not depend on the bundle id. The README says so. |
+| Coworker on an early test build (another bundle id) | The organisation ID, the token and the other settings must be entered once more: the app reads the token only after it has an organisation ID. The README says so. |
 | Offline queue in memory at update time | "Install and Relaunch" is user-initiated; the user chooses the moment. Pending offline actions are lost, as on any quit. |
 | Sparkle alert hidden behind other windows | Gentle reminders: the footer hint stays until the user clicks it or the session ends. |
 | Preview, idle-preview and click-test runs | `UpdateController.start()` is not called. No network, no alerts. |
