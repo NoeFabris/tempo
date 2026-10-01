@@ -45,13 +45,12 @@ Requires Xcode (Swift 6) on macOS 14 or later.
 ```sh
 swift test
 scripts/build-app.sh
-ARCHS=host scripts/build-app.sh
 open dist/Tempo.app
 ```
 
 - `swift test` runs the unit tests.
 - `scripts/build-app.sh` writes `dist/Tempo.app` and `dist/Tempo.zip` (universal).
-- `ARCHS=host scripts/build-app.sh` is faster (this Mac's architecture only).
+- For a faster build for this Mac's architecture only, run `ARCHS=host scripts/build-app.sh` instead.
 
 Builds are signed ad hoc and embed Sparkle. Render all popup screens with sample data (no account
 needed):
