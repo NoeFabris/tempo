@@ -374,6 +374,32 @@ final class TimeStoreTests: XCTestCase {
         XCTAssertEqual(api.entries.first { $0.id == "502" }?.note, "E83 handover", "a note the user wrote stays")
     }
 
+    func testRemoveIdleTimeAndContinue() async {
+        let start = Date().addingTimeInterval(-40 * 60)
+        api.entries = [TimeEntry(id: "501", day: Day(Date()), minutes: 30, note: "E97", service: cro)]
+        api.timers = [RunningTimer(id: "7001", startedAt: start, timeEntryID: "501")]
+        let store = await connectedStore()
+        XCTAssertEqual(store.runningSeconds / 60, 70)
+        // Idle since 25 minutes after the start: keep 30 + 25.
+        await store.removeIdleTime(since: start.addingTimeInterval(25 * 60), keepRunning: true)
+        XCTAssertEqual(api.entries[0].minutes, 55)
+        XCTAssertTrue(store.isRunning)
+        XCTAssertEqual(store.runningEntry?.id, "501")
+        XCTAssertEqual(store.runningSeconds / 60, 55, "continues from the kept time")
+        XCTAssertEqual(api.timers.filter(\.isRunning).count, 1)
+    }
+
+    func testRemoveIdleTimeAndStop() async {
+        let start = Date().addingTimeInterval(-40 * 60)
+        api.entries = [TimeEntry(id: "501", day: Day(Date()), minutes: 0, note: "", service: cro)]
+        api.timers = [RunningTimer(id: "7001", startedAt: start, timeEntryID: "501")]
+        let store = await connectedStore()
+        await store.removeIdleTime(since: start.addingTimeInterval(10 * 60), keepRunning: false)
+        XCTAssertEqual(api.entries[0].minutes, 10)
+        XCTAssertFalse(store.isRunning)
+        XCTAssertEqual(api.timers.filter(\.isRunning).count, 0)
+    }
+
     func testFavouriteReplacementAfterBudgetChange() async {
         settings.favourites = [Favourite(service: Service(id: "100", name: "CRO Development", clientName: "Northwind Retail"))]
         let store = await connectedStore()

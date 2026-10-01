@@ -5,6 +5,7 @@ import ProductiveCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: TimeStore!
     private var statusBar: StatusBarController!
+    private var idleMonitor: IdleMonitor?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let i = CommandLine.arguments.firstIndex(of: "--render-previews"), i + 1 < CommandLine.arguments.count {
@@ -15,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installEditMenu()
         store = TimeStore()
         statusBar = StatusBarController(store: store)
+        idleMonitor = IdleMonitor(store: store)
         if CommandLine.arguments.contains("--click-test") {
             // No account load: the Keychain read can wait for the user's approval.
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [statusBar] in statusBar?.runClickTest() }

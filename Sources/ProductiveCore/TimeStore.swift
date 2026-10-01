@@ -60,6 +60,8 @@ public final class TimeStore: ObservableObject {
     @Published public private(set) var weeklyTargetMinutes: Int
     @Published public private(set) var firstWeekday: Int
     @Published public private(set) var showWeekends: Bool
+    @Published public private(set) var idleDetection: Bool
+    @Published public private(set) var idleMinutes: Int
     /// Calendar meetings by day, loaded for the selected day.
     @Published public private(set) var calendar: [Day: [CalendarEvent]] = [:]
 
@@ -98,6 +100,8 @@ public final class TimeStore: ObservableObject {
         self.weeklyTargetMinutes = settings.weeklyTargetMinutes
         self.firstWeekday = settings.firstWeekday
         self.showWeekends = settings.showWeekends
+        self.idleDetection = settings.idleDetection
+        self.idleMinutes = settings.idleMinutes
         self.favourites = settings.favourites
         self.weekDays = Week.days(containing: Day(now), firstWeekday: settings.firstWeekday)
     }
@@ -548,6 +552,39 @@ public final class TimeStore: ObservableObject {
         }
     }
 
+    /// Removes the time after `idleStart` from the running entry. The timer stops; with `keepRunning`
+    /// it starts again on the same entry, so the work continues without the idle minutes.
+    public func removeIdleTime(since idleStart: Date, keepRunning: Bool) async {
+        guard let running = timer, !running.id.hasPrefix(Self.placeholderPrefix), api != nil else { return }
+        let entryID = running.timeEntryID
+        let kept = timerBaseMinutes + Self.minutes(from: running.startedAt, to: max(idleStart, running.startedAt))
+        advanceClock()
+        // Show it at once.
+        generation += 1
+        timer = nil
+        if let i = entries.firstIndex(where: { $0.id == entryID }) { entries[i].minutes = kept }
+
+        await serial { [weak self] in
+            guard let self, let api = self.api else { return }
+            do {
+                _ = try await api.stopTimer(id: running.id)
+                var updated = try await api.updateTimeEntry(id: entryID, changes: EntryChanges(minutes: kept))
+                if updated.jira == nil { updated.jira = running.entry?.jira ?? self.entries.first { $0.id == entryID }?.jira }
+                if let i = self.entries.firstIndex(where: { $0.id == entryID }) { self.entries[i] = updated }
+                if keepRunning {
+                    var restarted = try await api.startTimer(timeEntryID: entryID)
+                    if restarted.entry == nil { restarted.entry = updated }
+                    self.timerBaseMinutes = kept
+                    self.timer = restarted
+                }
+                self.lastError = nil
+            } catch {
+                self.handle(error)
+                await self.performRefresh()
+            }
+        }
+    }
+
     /// Runs on the serial queue only (inside `performRefresh`).
     private func flushPending(api: ProductiveAPI, person: Person) async throws {
         while let action = pending.first {
@@ -704,6 +741,16 @@ public final class TimeStore: ObservableObject {
     public func setWeeklyTarget(minutes: Int) {
         settings.weeklyTargetMinutes = minutes
         weeklyTargetMinutes = minutes
+    }
+
+    public func setIdleDetection(_ on: Bool) {
+        settings.idleDetection = on
+        idleDetection = on
+    }
+
+    public func setIdleMinutes(_ minutes: Int) {
+        settings.idleMinutes = minutes
+        idleMinutes = minutes
     }
 
     public func setShowWeekends(_ show: Bool) {

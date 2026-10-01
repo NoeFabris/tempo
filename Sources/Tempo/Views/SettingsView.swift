@@ -109,6 +109,21 @@ struct SettingsView: View {
                             Text("Show Saturday and Sunday").font(Brand.font(13))
                         }
                         .toggleStyle(.switch)
+                        Toggle(isOn: Binding(get: { store.idleDetection }, set: { store.setIdleDetection($0) })) {
+                            Text("Detect idle time").font(Brand.font(13))
+                        }
+                        .toggleStyle(.switch)
+                        if store.idleDetection {
+                            HStack {
+                                Text("Idle after").font(Brand.font(13))
+                                Spacer()
+                                Picker("", selection: Binding(get: { store.idleMinutes }, set: { store.setIdleMinutes($0) })) {
+                                    ForEach([5, 10, 15, 30], id: \.self) { Text("\($0) min").tag($0) }
+                                }
+                                .labelsHidden()
+                                .frame(width: 100)
+                            }
+                        }
                         Toggle(isOn: $launchAtLogin) { Text("Start at login").font(Brand.font(13)) }
                             .toggleStyle(.switch)
                             .onChange(of: launchAtLogin) { _, on in setLaunchAtLogin(on) }

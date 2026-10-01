@@ -55,6 +55,8 @@ public final class SettingsStore: @unchecked Sendable {
         static let lastEntry = "lastEntry"
         static let calendarLinks = "calendarLinks"
         static let showWeekends = "showWeekends"
+        static let idleDetection = "idleDetection"
+        static let idleMinutes = "idleMinutes"
         static let meetingServices = "meetingServices"
     }
 
@@ -99,6 +101,18 @@ public final class SettingsStore: @unchecked Sendable {
     public var showWeekends: Bool {
         get { defaults.bool(forKey: Key.showWeekends) }
         set { defaults.set(newValue, forKey: Key.showWeekends) }
+    }
+
+    /// Ask what to do with idle time while a timer runs. Default on.
+    public var idleDetection: Bool {
+        get { defaults.object(forKey: Key.idleDetection) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.idleDetection) }
+    }
+
+    /// Minutes without keyboard or mouse use before the time counts as idle. Default 5.
+    public var idleMinutes: Int {
+        get { defaults.object(forKey: Key.idleMinutes) as? Int ?? 5 }
+        set { defaults.set(newValue, forKey: Key.idleMinutes) }
     }
 
     /// Calendar event id → the id of the entry that logged it.

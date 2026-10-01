@@ -38,11 +38,30 @@ enum PreviewRenderer {
                     }
                 }
             }
+            for scheme in [ColorScheme.dark, .light] {
+                let idle = IdlePromptView(idleStart: Date().addingTimeInterval(-12 * 60)) { _ in }
+                    .environmentObject(store).environment(\.colorScheme, scheme)
+                renderView(idle, size: NSSize(width: 340, height: 300), scheme, dir, "idle")
+            }
             store.signOut()
             for scheme in [ColorScheme.dark, .light] { render(store, .main, scheme, dir, "setup") }
             group.leave()
         }
         while group.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    }
+
+    private static func renderView<V: View>(_ view: V, size: NSSize, _ scheme: ColorScheme, _ dir: URL, _ name: String) {
+        let host = NSHostingView(rootView: view)
+        host.frame = NSRect(origin: .zero, size: host.fittingSize.width > 0 ? host.fittingSize : size)
+        host.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
+        host.cacheDisplay(in: host.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?
+            .write(to: dir.appendingPathComponent("\(name)-\(scheme == .dark ? "dark" : "light").png"))
     }
 
     private static func render(_ store: TimeStore, _ screen: Navigator.Screen, _ scheme: ColorScheme, _ dir: URL, _ name: String,
