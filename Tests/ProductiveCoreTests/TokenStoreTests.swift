@@ -5,7 +5,7 @@ final class FileTokenStoreTests: XCTestCase {
     func testWriteReadPermissionsAndDelete() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("tempo-token-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }
-        let store = FileTokenStore(directory: dir, migrateFrom: nil)
+        let store = FileTokenStore(directory: dir)
         XCTAssertNil(store.read())
 
         XCTAssertTrue(store.write("secret-1"))

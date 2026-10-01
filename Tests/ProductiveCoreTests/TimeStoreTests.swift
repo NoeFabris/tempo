@@ -100,7 +100,7 @@ final class TimeStoreTests: XCTestCase {
         return store
     }
 
-    func testKeychainIsReadOncePerLaunch() async {
+    func testTokenIsReadOncePerLaunch() async {
         settings.organizationID = "555"
         settings.person = Person(id: "77", name: "Noe Fabris")
         let tokens = MemoryTokenStore("tok")
@@ -111,7 +111,7 @@ final class TimeStoreTests: XCTestCase {
         // Settings: "Test connection" with the field left empty keeps the saved token.
         let person = await store.connect(token: "", organizationID: "555")
         XCTAssertEqual(person?.id, "77")
-        XCTAssertEqual(tokens.reads, 1, "no second Keychain read")
+        XCTAssertEqual(tokens.reads, 1, "no second token read")
         XCTAssertEqual(tokens.token, "tok")
     }
 

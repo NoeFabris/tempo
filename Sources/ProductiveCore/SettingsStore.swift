@@ -1,65 +1,21 @@
 import Foundation
-import Security
-
-/// Stores the API token in the macOS Keychain. The token never goes to disk in plain text.
-public struct KeychainStore: Sendable {
-    public let service: String
-    public let account: String
-
-    public init(service: String = "app.tempo.menubar", account: String = "productive-api-token") {
-        self.service = service
-        self.account = account
-    }
-
-    private var query: [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service,
-         kSecAttrAccount as String: account]
-    }
-
-    public func read() -> String? {
-        var q = query
-        q[kSecReturnData as String] = true
-        q[kSecMatchLimit as String] = kSecMatchLimitOne
-        var out: AnyObject?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    @discardableResult
-    public func write(_ token: String) -> Bool {
-        SecItemDelete(query as CFDictionary)
-        guard !token.isEmpty else { return true }
-        var q = query
-        q[kSecValueData as String] = Data(token.utf8)
-        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
-    }
-}
 
 /// Stores the API token in a file that only the user can read (folder 0700, file 0600):
 /// ~/Library/Application Support/Tempo/token. Chosen over the Keychain because locally built,
 /// unsigned versions made macOS ask for the password after every build.
-/// The first read moves a token that an older version saved in the Keychain.
 public struct FileTokenStore: TokenStoring {
     public let url: URL
-    private let legacy: KeychainStore?
 
-    public init(directory: URL? = nil, migrateFrom legacy: KeychainStore? = KeychainStore()) {
+    public init(directory: URL? = nil) {
         let base = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Tempo", isDirectory: true)
         url = base.appendingPathComponent("token")
-        self.legacy = legacy
     }
 
     public func read() -> String? {
-        if let data = try? Data(contentsOf: url), let token = String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
-            return token
-        }
-        // One-time move from the Keychain (older versions).
-        guard let legacy, let token = legacy.read(), !token.isEmpty, write(token) else { return nil }
-        legacy.write("")
+        guard let data = try? Data(contentsOf: url),
+              let token = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty else { return nil }
         return token
     }
 

@@ -5,7 +5,6 @@ public protocol TokenStoring: Sendable {
     @discardableResult func write(_ token: String) -> Bool
 }
 
-extension KeychainStore: TokenStoring {}
 
 /// A start or stop that could not reach Productive. Sent at the next successful refresh.
 /// Every action sends absolute minutes, so a retry after a partial failure gives the same result.
@@ -213,7 +212,7 @@ public final class TimeStore: ObservableObject {
         }
         if token != cachedToken {
             guard tokenStore.write(token) else {
-                lastError = "Could not save the token in the Keychain."
+                lastError = "Could not save the token."
                 return nil
             }
             cachedToken = token
