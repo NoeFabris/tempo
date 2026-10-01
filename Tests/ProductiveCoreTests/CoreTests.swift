@@ -38,7 +38,7 @@ final class MappingTests: XCTestCase {
     func testExperimentCode() {
         func code(_ s: String) -> String? { JiraLink(key: "X-1", summary: s, url: nil).experimentCode }
         XCTAssertEqual(code("NWR E83 Sticky Product Gallery"), "E83")
-        XCTAssertEqual(code("TSP E22 - QA"), "E22")
+        XCTAssertEqual(code("TSP E22 - QA"), "E22 QA")
         XCTAssertNil(code("Sticky bar issues"))
         XCTAssertNil(code("EMEA rollout E"), "no digits")
         XCTAssertNil(code("SE97 pricing"), "not a separate word")

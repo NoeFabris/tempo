@@ -327,10 +327,13 @@ public final class TimeStore: ObservableObject {
         }
     }
 
-    /// Entries tracked from Jira have no note. Set the note to the experiment code ("E97").
+    /// Entries tracked from Jira have no note. Set the note to the experiment code ("E97", "E83 QA").
+    /// A note that is only the bare code (set by an older version) is upgraded to add "QA".
     private func fillJiraNotes(api: ProductiveAPI) async {
-        let candidates = entries.filter {
-            $0.note.isEmpty && !$0.isLocked && !$0.isPending && $0.jira?.experimentCode != nil && !autoNoted.contains($0.id)
+        let candidates = entries.filter { entry in
+            guard let jira = entry.jira, let code = jira.experimentCode,
+                  !entry.isLocked, !entry.isPending, !autoNoted.contains(entry.id) else { return false }
+            return entry.note.isEmpty || (entry.note == jira.baseExperimentCode && entry.note != code)
         }
         for entry in candidates {
             autoNoted.insert(entry.id)

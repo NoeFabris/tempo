@@ -92,3 +92,14 @@ final class LossyDecodingTests: XCTestCase {
         XCTAssertEqual(doc.data.compactMap(Mapping.calendarEvent).map(\.minutes), [30, 15])
     }
 }
+
+final class ExperimentCodeTests: XCTestCase {
+    func code(_ summary: String) -> String? { JiraLink(key: "X-1", summary: summary, url: nil).experimentCode }
+
+    func testQA() {
+        XCTAssertEqual(code("NWR E83 QA - Sticky Product Gallery"), "E83 QA")
+        XCTAssertEqual(code("TSP E22 - QA"), "E22 QA")
+        XCTAssertEqual(code("WT E97 Checkout Test 1 — Shorter Form"), "E97")
+        XCTAssertEqual(code("NWR E12 Quality checks"), "E12", "QA must be a separate word")
+    }
+}

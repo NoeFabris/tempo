@@ -105,9 +105,17 @@ public struct JiraLink: Equatable, Sendable {
     }
 
     /// The experiment code in the summary: "WT E97 Checkout Test 1" → "E97".
-    public var experimentCode: String? {
+    public var baseExperimentCode: String? {
         guard let range = summary.range(of: #"\bE\d{1,4}\b"#, options: .regularExpression) else { return nil }
         return String(summary[range])
+    }
+
+    /// The note for the entry: the code, plus "QA" when the summary has the word QA.
+    /// "NWR E83 QA - Sticky Gallery" → "E83 QA"; "WT E97 Checkout Test 1" → "E97".
+    public var experimentCode: String? {
+        guard let code = baseExperimentCode else { return nil }
+        let isQA = summary.range(of: #"\bQA\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+        return isQA ? code + " QA" : code
     }
 }
 
