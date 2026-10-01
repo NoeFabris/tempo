@@ -16,7 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installEditMenu()
         store = TimeStore()
         statusBar = StatusBarController(store: store)
-        idleMonitor = IdleMonitor(store: store)
+        idleMonitor = IdleMonitor(store: store) { [weak self] in self?.statusBar.itemScreenFrame }
+        if CommandLine.arguments.contains("--idle-preview") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [idleMonitor] in idleMonitor?.preview() }
+            return
+        }
         if CommandLine.arguments.contains("--click-test") {
             // No account load: the Keychain read can wait for the user's approval.
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [statusBar] in statusBar?.runClickTest() }

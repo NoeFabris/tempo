@@ -4,19 +4,23 @@ import CoreGraphics
 import ProductiveCore
 import SwiftUI
 
-/// Watches for idle time while a timer runs, like Harvest. After `store.idleMinutes` without keyboard
-/// or mouse use (or a sleep), it waits until the user is back and then asks what to do.
+/// Watches for idle time while a timer runs, like Harvest. As soon as `store.idleMinutes` pass without
+/// keyboard or mouse use (or the Mac sleeps that long), it shows the question below the menu bar item.
+/// The question stays until the user answers; it counts the idle minutes meanwhile.
 @MainActor
 final class IdleMonitor {
     private let store: TimeStore
+    /// The screen frame of the menu bar item, to place the question below it.
+    private let anchor: () -> NSRect?
     private var ticker: Timer?
     /// When the idle time started (the last input before the idle period).
     private var idleSince: Date?
     private var panel: NSPanel?
     private var cancellables: Set<AnyCancellable> = []
 
-    init(store: TimeStore) {
+    init(store: TimeStore, anchor: @escaping () -> NSRect?) {
         self.store = store
+        self.anchor = anchor
         ticker = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.check() }
         }
@@ -28,6 +32,9 @@ final class IdleMonitor {
                 .sink { [weak self] _ in self?.markIdleStartIfRunning(at: Date()) }
                 .store(in: &cancellables)
         }
+        center.publisher(for: NSWorkspace.didWakeNotification)
+            .sink { [weak self] _ in self?.check() }
+            .store(in: &cancellables)
         // Close the question when the timer stops somewhere else.
         store.$timer
             .receive(on: RunLoop.main)
@@ -51,25 +58,30 @@ final class IdleMonitor {
             idleSince = nil
             return
         }
+        let now = Date()
         let idle = Self.secondsSinceInput
         let limit = TimeInterval(store.idleMinutes * 60)
-        if idle >= limit {
-            if idleSince == nil { idleSince = Date().addingTimeInterval(-idle) }
-        } else if let since = idleSince, idle < 30 {
-            // The user is back.
-            idleSince = nil
-            let start = max(since, timer.startedAt)
-            guard Date().timeIntervalSince(start) >= limit else { return }
-            ask(idleStart: start)
+        if idle >= limit && idleSince == nil { idleSince = now.addingTimeInterval(-idle) }
+        guard panel == nil else { return }
+        if let since = idleSince, now.timeIntervalSince(since) >= limit {
+            ask(idleStart: max(since, timer.startedAt))
+        } else if idle < 30 {
+            idleSince = nil // Back before the limit (for example, a short screen lock).
         }
     }
 
     // MARK: The question
 
-    private func ask(idleStart: Date) {
+    /// `Tempo --idle-preview`: shows the question for 8 s with no action, to check its position.
+    func preview() {
+        ask(idleStart: Date().addingTimeInterval(-6 * 60), dryRun: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { NSApp.terminate(nil) }
+    }
+
+    private func ask(idleStart: Date, dryRun: Bool = false) {
         let view = IdlePromptView(idleStart: idleStart) { [weak self] choice in
             self?.dismiss()
-            guard let self else { return }
+            guard let self, !dryRun else { return }
             Task {
                 switch choice {
                 case .keep: break
@@ -95,14 +107,27 @@ final class IdleMonitor {
         panel.isReleasedWhenClosed = false
         panel.contentView = NSHostingView(rootView: view)
         panel.setContentSize(panel.contentView!.fittingSize)
-        panel.center()
+        place(panel)
         panel.orderFrontRegardless()
         self.panel = panel
+    }
+
+    /// Below the menu bar item, like the main popup; centred when the item's position is unknown.
+    private func place(_ panel: NSPanel) {
+        guard let item = anchor(), let screen = NSScreen.screens.first(where: { $0.frame.intersects(item) }) ?? NSScreen.main
+        else { return panel.center() }
+        let size = panel.frame.size
+        let visible = screen.visibleFrame
+        var x = item.midX - size.width / 2
+        x = min(max(x, visible.minX + 8), visible.maxX - size.width - 8)
+        let y = min(item.minY, visible.maxY) - size.height - 6
+        panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
     private func dismiss() {
         panel?.orderOut(nil)
         panel = nil
+        idleSince = nil
     }
 }
 
@@ -117,7 +142,7 @@ struct IdlePromptView: View {
         VStack(alignment: .leading, spacing: 12) {
             let minutes = max(0, Int(store.now.timeIntervalSince(idleStart)) / 60)
             BrandHeading(bold: "You were idle", italic: "for " + (minutes < 60 ? "\(minutes) min" : TimeFormat.hm(minutes)), size: 17)
-            Text("Since \(idleStart.formatted(date: .omitted, time: .shortened)). The timer kept running.")
+            Text("Since \(idleStart.formatted(date: .omitted, time: .shortened)). The timer is still running.")
                 .font(Brand.font(12)).foregroundStyle(Brand.secondary)
             if let entry = store.runningEntry {
                 EntryLabels(entry: entry)

@@ -211,6 +211,12 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         previousApp = nil
     }
 
+    /// The menu bar item's frame in screen coordinates.
+    var itemScreenFrame: NSRect? {
+        guard let button = item.button, let window = button.window else { return nil }
+        return window.convertToScreen(button.convert(button.bounds, to: nil))
+    }
+
     func showPopover(_ screen: Navigator.Screen = .main) {
         guard let button = item.button else { return }
         nav.screen = screen
