@@ -44,6 +44,8 @@ committed scripts differ where these notes say so.
   `grep … >/dev/null` instead of `grep -q` (SIGPIPE under `pipefail`).
 - Task 5: `release.sh` reads `<sparkle:version>` as an element and checks the new item's
   `sparkle:edSignature`; the test key is exported to `$TMPDIR`, not `/tmp`.
+- Task 8: the runbook's key export clears the clipboard after the paste and uses plain `rm` (`rm -P` has
+  no effect on this Mac); spec §7.4 now says `$TMPDIR`, not `/tmp`.
 - Task 9: appcast checks use the element form `<sparkle:version>…</sparkle:version>`.
 
 ---

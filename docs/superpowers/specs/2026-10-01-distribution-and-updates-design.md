@@ -298,8 +298,9 @@ On `push` to `main` and on pull requests: `macos-26`, `actions/checkout@v7`, `sw
 1. `swift build` once, so the Sparkle artifact exists.
 2. `$(find .build/artifacts -name generate_keys)` → the private key goes into the login Keychain; the
    command prints the public key. Paste it into `SU_PUBLIC_ED_KEY` in `build-app.sh`.
-3. `generate_keys -x /tmp/sparkle-private.key`; `gh secret set SPARKLE_PRIVATE_KEY < /tmp/sparkle-private.key`;
-   store the file's content in the password manager; `rm -P /tmp/sparkle-private.key`.
+3. `generate_keys -x "$TMPDIR/sparkle-private.key"` (the per-user temp folder, not the shared `/tmp`);
+   `gh secret set SPARKLE_PRIVATE_KEY < "$TMPDIR/sparkle-private.key"`; copy the file's content into the
+   password manager; then clear the clipboard (`pbcopy < /dev/null`) and `rm` the file.
 4. Housekeeping: `security delete-identity -c "Tempo Local Signing"` removes the stale self-signed
    identity from the earlier approach (optional).
 

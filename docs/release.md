@@ -15,14 +15,23 @@ Sparkle. The design is in `docs/superpowers/specs/2026-10-01-distribution-and-up
    ```
 
    The public key is the constant `SU_PUBLIC_ED_KEY` in `scripts/build-app.sh`.
-3. Export the private key and keep it in two more places. Never commit it.
+3. Export the private key and keep it in two more places. Never commit it. Run both blocks in the
+   repository root, in the same Terminal window as step 2.
 
    ```sh
    "$GK" -x "$TMPDIR/sparkle-private.key"
    gh secret set SPARKLE_PRIVATE_KEY --repo NoeFabris/tempo < "$TMPDIR/sparkle-private.key"
-   pbcopy < "$TMPDIR/sparkle-private.key"     # paste into the password manager, then:
-   rm -P "$TMPDIR/sparkle-private.key"
+   pbcopy < "$TMPDIR/sparkle-private.key"
    ```
+
+   Paste the clipboard into the password manager. Then clear the clipboard and delete the file:
+
+   ```sh
+   pbcopy < /dev/null
+   rm "$TMPDIR/sparkle-private.key"
+   ```
+
+   If a clipboard history tool is installed, delete the entry there too.
 
    Without the private key no update can be signed. Key rotation needs a Developer ID, so a lost
    key means colleagues reinstall with the one-line command.
