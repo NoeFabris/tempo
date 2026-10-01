@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         if CommandLine.arguments.contains("--click-test") {
-            // No account load: the Keychain read can wait for the user's approval.
+            // No account load: the click test only needs the status item.
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [statusBar] in statusBar?.runClickTest() }
             return
         }

@@ -77,7 +77,7 @@ newest (highest ID). The app asks once to confirm the replacement, then stores t
 
 ### Settings
 
-API token (Keychain only), organisation ID, "Test connection" (shows the person's name),
+API token (user-only file), organisation ID, "Test connection" (shows the person's name),
 weekly target (default 37:30), week start day (default Monday), start at login,
 manage favourites (order, remove).
 The first launch shows the same connection fields as a setup screen.
@@ -93,7 +93,7 @@ Swift Package, macOS 14+, two targets and one test target.
 | `ProductiveCore/ProductiveClient` | `ProductiveAPI` protocol and the HTTP implementation. Auth headers, pagination, `429` retry, error mapping. |
 | `ProductiveCore/TimeFormat`, `Week` | `h:mm` format and parse, days of a week, totals. |
 | `ProductiveCore/FavouriteMatcher` | Favourite resolution after budget changes. |
-| `ProductiveCore/KeychainStore`, `SettingsStore` | Token in Keychain; other settings in UserDefaults. |
+| `ProductiveCore/SettingsStore` | Token in a user-only file (`FileTokenStore`); other settings in UserDefaults. |
 | `ProductiveCore/TimeStore` | Main-actor app state; the only caller of `ProductiveAPI`. |
 | `Tempo/StatusBarController` | Status item, two click zones, popover. |
 | `Tempo/Views/*` | SwiftUI popup screens. |

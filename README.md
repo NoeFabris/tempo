@@ -31,13 +31,12 @@ The token is stored in `~/Library/Application Support/Tempo/token`, readable onl
 Requires Xcode (Swift 6) on macOS 14 or later.
 
 ```sh
-scripts/make-signing-cert.sh   # optional, once: a stable local signing identity
 swift test                     # unit tests
 scripts/build-app.sh           # dist/Tempo.app and dist/Tempo.zip (universal)
 open dist/Tempo.app
 ```
 
-Without the local identity, builds are signed ad hoc.
+Without a Developer ID, builds are signed ad hoc.
 
 To sign and notarise for the whole team:
 
