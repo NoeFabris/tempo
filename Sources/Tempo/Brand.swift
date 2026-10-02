@@ -82,27 +82,35 @@ struct IconButton: View {
 }
 
 /// The refresh button: a click turns the arrow once around its centre; it keeps turning while
-/// `isRefreshing` is true and always stops upright.
+/// `isRefreshing` is true and always stops upright, at the end of a full turn.
+///
+/// The angle comes from the clock (TimelineView) and a task ends the spin. Do not chain animations by their
+/// completion: SwiftUI completes the animations of a view that is off screen at once, so such a chain
+/// spins without pause and hangs the app (seen in 1.1.2 when the popup changed screens during a refresh).
 struct RefreshButton: View {
     var help: String = ""
     let isRefreshing: Bool
     let action: () -> Void
-    @State private var turns = 0.0
-    @State private var spinning = false
-    /// Mirrors `isRefreshing`: the animation's completion reads it after the view has changed.
+    /// When the current spin began; nil while the arrow is at rest.
+    @State private var spinStart: Date?
+    /// Mirrors `isRefreshing` for the task that ends the spin.
     @State private var busy = false
+
+    private static let turn: TimeInterval = 0.8
 
     var body: some View {
         Button {
             action()
             spin()
         } label: {
-            RefreshGlyph()
-                .stroke(Brand.secondary, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
-                .frame(width: 13, height: 13)
-                .rotationEffect(.degrees(turns * 360))
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
+            TimelineView(.animation(paused: spinStart == nil)) { context in
+                RefreshGlyph()
+                    .stroke(Brand.secondary, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                    .frame(width: 13, height: 13)
+                    .rotationEffect(.degrees(angle(at: context.date)))
+            }
+            .frame(width: 24, height: 24)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(help)
@@ -111,18 +119,29 @@ struct RefreshButton: View {
             busy = on
             if on { spin() }
         }
+        // Cancelled when the view goes away or a new spin begins.
+        .task(id: spinStart) {
+            guard let start = spinStart else { return }
+            // At least one full turn, then whole turns while the refresh runs.
+            var turns = 1.0
+            repeat {
+                let wait = start.addingTimeInterval(turns * Self.turn).timeIntervalSinceNow
+                if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait * 1e9)) }
+                if Task.isCancelled { return }
+                turns += 1
+            } while busy
+            spinStart = nil
+        }
     }
 
     private func spin() {
-        guard !spinning else { return }
-        spinning = true
-        turn()
+        if spinStart == nil { spinStart = Date() }
     }
 
-    private func turn() {
-        withAnimation(.linear(duration: 0.8)) { turns += 1 } completion: {
-            if busy { turn() } else { spinning = false }
-        }
+    private func angle(at date: Date) -> Double {
+        guard let spinStart else { return 0 }
+        let turns = date.timeIntervalSince(spinStart) / Self.turn
+        return (turns - turns.rounded(.down)) * 360
     }
 }
 
