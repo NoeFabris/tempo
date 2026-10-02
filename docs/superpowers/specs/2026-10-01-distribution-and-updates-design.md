@@ -205,8 +205,13 @@ A menu bar app is rarely quit, so `UpdateController` returns `true` and runs the
 - At once, and then every 30 s, when the popup is closed and `isBusy` is false. `isBusy` is
   `TimeStore.hasPendingWork` (an offline action waits, or a request is on the serial queue) or the idle
   question is open. The block installs and relaunches without a dialog.
+- Before the block runs, one more turn of the main queue: a click handled just before (▶ in the menu bar,
+  an answer to the idle question) starts its request in a task that runs first and makes `isBusy` true.
 - A running timer is safe: it runs in Productive. The relaunched app loads it again.
-- The footer shows the ready version; a click installs now (it still waits for `isBusy`).
+- The footer shows the ready version. A click installs at once when `isBusy` is false. Otherwise the
+  install follows when `isBusy` clears and the popup is closed, so a form in use is never lost.
+- An offline action that Productive refuses (HTTP 4xx, for example an entry deleted on the web) is dropped
+  and reported in the footer. Kept, it would fail every refresh and hold back every update.
 - With the switch off, Sparkle does not download: a new version shows the "Update available" hint (§5.2).
   An update that was downloaded before the switch went off installs on the next quit, or from the footer.
 

@@ -82,6 +82,33 @@ final class ServiceDataTests: XCTestCase {
         XCTAssertEqual(store.clientCodes, ["wt": "Wingtip Online Ltd"])
         XCTAssertEqual(store.recentServices.map(\.id), ["1"])
     }
+
+    /// Productive returns entries in no fixed order: inside a day, the newest entry (highest id) comes first.
+    @MainActor
+    func testRecentServicesNewestFirstInsideADay() async {
+        let api = MockAPI()
+        let today = Day(Date())
+        let services = ["A", "B", "C", "D"].map { Service(id: $0, name: "Service \($0)") }
+        api.services = services
+        api.entries = [TimeEntry(id: "100", day: today, minutes: 1, note: "", service: services[0]),
+                       TimeEntry(id: "102", day: today, minutes: 1, note: "", service: services[1]),
+                       TimeEntry(id: "101", day: today, minutes: 1, note: "", service: services[2]),
+                       TimeEntry(id: "999", day: today.adding(days: -1), minutes: 1, note: "", service: services[3])]
+        let store = TimeStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "recent-\(UUID())")!),
+                              tokenStore: MemoryTokenStore(), makeAPI: { _ in api })
+        await store.connect(token: "t", organizationID: "1")
+        let yesterdayInWeek = store.weekDays.contains(today.adding(days: -1))
+        XCTAssertEqual(store.recentServices.map(\.id), ["B", "C", "A"] + (yesterdayInWeek ? ["D"] : []))
+    }
+
+    func testRefusalIsAnAnswerNotANetworkError() {
+        XCTAssertTrue(ProductiveError.http(status: 404, message: "").isRefusal)
+        XCTAssertTrue(ProductiveError.http(status: 422, message: "").isRefusal)
+        XCTAssertFalse(ProductiveError.http(status: 500, message: "").isRefusal, "a server error can pass")
+        XCTAssertFalse(ProductiveError.offline.isRefusal)
+        XCTAssertFalse(ProductiveError.rateLimited.isRefusal)
+        XCTAssertFalse(ProductiveError.unauthorized.isRefusal)
+    }
 }
 
 final class ServiceSearchTests: XCTestCase {

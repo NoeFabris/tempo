@@ -38,7 +38,7 @@ final class MockAPI: ProductiveAPI, @unchecked Sendable {
 
     func updateTimeEntry(id: String, changes: EntryChanges) async throws -> TimeEntry {
         try check("update \(id) \(changes.minutes.map(String.init) ?? "-")")
-        let i = entries.firstIndex { $0.id == id }!
+        guard let i = entries.firstIndex(where: { $0.id == id }) else { throw ProductiveError.http(status: 404, message: "Not found") }
         if let minutes = changes.minutes { entries[i].minutes = minutes }
         if let note = changes.note { entries[i].note = note }
         if let day = changes.day { entries[i].day = day }
@@ -292,6 +292,29 @@ final class TimeStoreTests: XCTestCase {
         XCTAssertFalse(store.isOffline)
         XCTAssertTrue(api.calls.contains("create 9001 25"))
         XCTAssertFalse(store.hasPendingWork)
+    }
+
+    func testRefusedOfflineChangeIsDroppedAndReported() async {
+        var clock = Date()
+        api.entries = [TimeEntry(id: "501", day: Day(clock), minutes: 30, note: "", service: cro)]
+        api.timers = [RunningTimer(id: "7001", startedAt: clock.addingTimeInterval(-10 * 60), timeEntryID: "501")]
+        let store = TimeStore(settings: settings, tokenStore: MemoryTokenStore(), makeAPI: { [api] _ in api! }, clock: { clock })
+        await store.connect(token: "tok", organizationID: "555")
+        api.failure = .offline
+        await store.stop()
+        XCTAssertTrue(store.hasPendingWork)
+
+        api.entries = [] // Deleted on the web before the Mac is back online: Productive answers 404.
+        api.failure = nil
+        clock = clock.addingTimeInterval(60)
+        await store.refresh()
+        XCTAssertTrue(store.pending.isEmpty, "a refused change cannot block every later refresh")
+        XCTAssertFalse(store.hasPendingWork, "nor an automatic update")
+        XCTAssertTrue(store.lastError?.contains("refused") == true, "the user sees why the change is gone")
+        XCTAssertFalse(store.isOffline)
+
+        await store.refresh()
+        XCTAssertNil(store.lastError, "the next refresh is clean")
     }
 
     func testPendingWorkWhileARequestRuns() async {

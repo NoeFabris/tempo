@@ -123,12 +123,12 @@ private final class SampleAPI: ProductiveAPI, @unchecked Sendable {
                 list.append(TimeEntry(id: String(id), day: day, minutes: m, note: n, service: services[s], isLocked: i == 0))
             }
         }
-        // Tracked on last month's budget by mistake: the day list and the picker's Recent mark it.
-        list.append(TimeEntry(id: "899", day: Day(Date()), minutes: 20, note: "Sprint planning", service: services[4]))
         list.append(TimeEntry(id: "900", day: Day(Date()), minutes: 105, note: "", service: services[0],
                               jira: JiraLink(key: "WT-558", summary: "WT E97 Checkout Test 1 — Shorter Form",
                                              url: URL(string: "https://example.atlassian.net/browse/WT-558"))))
         list.append(TimeEntry(id: "901", day: Day(Date()), minutes: 30, note: "Client call", service: services[1]))
+        // Tracked on last month's budget by mistake: the day list and the picker's Recent mark it.
+        list.append(TimeEntry(id: "902", day: Day(Date()), minutes: 20, note: "Sprint planning", service: services[4]))
         return list
     }()
     var timer: RunningTimer?

@@ -33,6 +33,13 @@ public enum ProductiveError: Error, LocalizedError, Equatable {
     }
 
     public var isNetwork: Bool { self == .offline }
+
+    /// Productive answered and refused the request (HTTP 4xx other than 401, 403 and 429), for example for an
+    /// entry that was deleted on the web. Sending it again gives the same answer.
+    public var isRefusal: Bool {
+        if case .http(let status, _) = self { return (400..<500).contains(status) }
+        return false
+    }
 }
 
 /// The fields of a time entry to change. A nil field does not change.

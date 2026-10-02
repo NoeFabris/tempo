@@ -314,7 +314,7 @@ public final class TimeStore: ObservableObject {
         defer { isLoading = false }
         advanceClock()
         do {
-            try await flushPending(api: api, person: person)
+            let refused = try await flushPending(api: api, person: person)
             async let timers = api.recentTimers(personID: person.id)
             let entryList = try await loadEntries(api: api, personID: person.id)
             let running = try await timers.first(where: \.isRunning)
@@ -325,7 +325,7 @@ public final class TimeStore: ObservableObject {
             if let entry = runningEntry, !entry.isPending { remember(entry) }
             await loadCalendar(selectedDay, force: true)
             isOffline = false
-            lastError = nil
+            lastError = refused.map { "Productive refused a change made offline. \($0.errorDescription ?? "")" }
             await fillJiraNotes(api: api)
             if servicesLoadedAt.map({ now.timeIntervalSince($0) > 6 * 3600 }) ?? true {
                 await performServicesRefresh()
@@ -590,41 +590,53 @@ public final class TimeStore: ObservableObject {
         }
     }
 
-    /// Runs on the serial queue only (inside `performRefresh`).
-    private func flushPending(api: ProductiveAPI, person: Person) async throws {
+    /// Sends the offline actions in order. Runs on the serial queue only (inside `performRefresh`).
+    /// An action that Productive refuses is dropped: kept, it would fail every later refresh (and hold back
+    /// an automatic update, which waits for `hasPendingWork`). Returns the last refusal.
+    private func flushPending(api: ProductiveAPI, person: Person) async throws -> ProductiveError? {
+        var refused: ProductiveError?
         while let action = pending.first {
-            switch action {
-            case .start(let id, let service, let at, let entryID, let base, let note):
-                let gap = Self.minutes(from: at, to: clock())
-                let entry: TimeEntry
-                if let entryID {
-                    entry = try await api.updateTimeEntry(id: entryID, minutes: base + gap, note: nil)
-                } else {
-                    entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id,
-                                                          day: Day(at), minutes: gap, note: note)
-                    // A retry must continue this entry, not create a second one.
-                    replacePending(id, with: .start(id: id, service: service, at: at, entryID: entry.id,
-                                                    baseMinutes: 0, note: note))
-                }
-                startedTimers[id] = try await api.startTimer(timeEntryID: entry.id)
-
-            case .stop(_, let timerID, let entryID, let startedAt, let base, let at):
-                do { _ = try await api.stopTimer(id: timerID) }
-                catch let e as ProductiveError where e.isNetwork { throw e }
-                catch { /* The timer was already stopped somewhere else. */ }
-                _ = try await api.updateTimeEntry(id: entryID, minutes: base + Self.minutes(from: startedAt, to: at), note: nil)
-
-            case .log(let id, let service, let day, let entryID, let base, let minutes, let note):
-                if let entryID {
-                    _ = try await api.updateTimeEntry(id: entryID, minutes: base + minutes, note: nil)
-                } else {
-                    let entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id,
-                                                              day: day, minutes: minutes, note: note)
-                    replacePending(id, with: .log(id: id, service: service, day: day, entryID: entry.id,
-                                                  baseMinutes: 0, minutes: minutes, note: note))
-                }
+            do {
+                try await send(action, api: api, person: person)
+            } catch let error as ProductiveError where error.isRefusal {
+                refused = error
             }
             pending.removeAll { $0.id == action.id }
+        }
+        return refused
+    }
+
+    private func send(_ action: PendingAction, api: ProductiveAPI, person: Person) async throws {
+        switch action {
+        case .start(let id, let service, let at, let entryID, let base, let note):
+            let gap = Self.minutes(from: at, to: clock())
+            let entry: TimeEntry
+            if let entryID {
+                entry = try await api.updateTimeEntry(id: entryID, minutes: base + gap, note: nil)
+            } else {
+                entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id,
+                                                      day: Day(at), minutes: gap, note: note)
+                // A retry must continue this entry, not create a second one.
+                replacePending(id, with: .start(id: id, service: service, at: at, entryID: entry.id,
+                                                baseMinutes: 0, note: note))
+            }
+            startedTimers[id] = try await api.startTimer(timeEntryID: entry.id)
+
+        case .stop(_, let timerID, let entryID, let startedAt, let base, let at):
+            do { _ = try await api.stopTimer(id: timerID) }
+            catch let e as ProductiveError where e.isNetwork { throw e }
+            catch { /* The timer was already stopped somewhere else. */ }
+            _ = try await api.updateTimeEntry(id: entryID, minutes: base + Self.minutes(from: startedAt, to: at), note: nil)
+
+        case .log(let id, let service, let day, let entryID, let base, let minutes, let note):
+            if let entryID {
+                _ = try await api.updateTimeEntry(id: entryID, minutes: base + minutes, note: nil)
+            } else {
+                let entry = try await api.createTimeEntry(personID: person.id, serviceID: service.id,
+                                                          day: day, minutes: minutes, note: note)
+                replacePending(id, with: .log(id: id, service: service, day: day, entryID: entry.id,
+                                              baseMinutes: 0, minutes: minutes, note: note))
+            }
         }
     }
 
@@ -814,10 +826,11 @@ public final class TimeStore: ObservableObject {
         services.first { $0.id == service.id } ?? service
     }
 
-    /// Services of recent entries, newest first (for the picker).
+    /// Services of recent entries, newest first (for the picker). Inside a day, a higher entry id is newer;
+    /// Productive returns entries in no fixed order.
     public var recentServices: [Service] {
         var seen = Set<String>()
-        return entries.sorted { $0.day > $1.day }
+        return entries.sorted { ($0.day, Int($0.id) ?? .max) > ($1.day, Int($1.id) ?? .max) }
             .map { resolvedService(for: $0.service) }
             .filter { !$0.id.isEmpty && seen.insert($0.id).inserted }
     }

@@ -121,8 +121,11 @@ struct BudgetMonthTag: View {
     let day: Day
 
     var body: some View {
-        if service.budgetEndedBeforeMonth(of: day), let end = service.budgetEnd?.date() {
-            Text(end.formatted(.dateTime.month(.abbreviated)))
+        if service.budgetEndedBeforeMonth(of: day), let endDay = service.budgetEnd {
+            let end = endDay.date()
+            // "Sep", or "Oct 2025" for a budget from another year.
+            Text(end.formatted(endDay.iso.prefix(4) == day.iso.prefix(4) ? .dateTime.month(.abbreviated)
+                                                                          : .dateTime.month(.abbreviated).year()))
                 .font(Brand.italic(10))
                 .foregroundStyle(Brand.secondary)
                 .padding(.horizontal, 4)
@@ -438,7 +441,9 @@ struct FooterBar: View {
                 .animation(.easeInOut(duration: 0.4), value: store.isLoading)
             if let version = updates.readyVersion {
                 IconButton(systemName: "arrow.down.circle.fill",
-                           help: "Tempo \(version) is ready. It installs when the popup closes. Click to install now.",
+                           help: updates.installRequested
+                               ? "Tempo \(version) installs when your changes have reached Productive."
+                               : "Tempo \(version) is ready. It installs when the popup closes. Click to install now.",
                            tint: Brand.violet) {
                     updates.installNow()
                 }

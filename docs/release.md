@@ -47,8 +47,9 @@ Sparkle. The design is in `docs/superpowers/specs/2026-10-01-distribution-and-up
 1. Everything is committed on `main` and the CI workflow is green.
 2. `git tag v1.2.0 && git push origin main v1.2.0`
 3. The Release workflow builds, signs and publishes: https://github.com/NoeFabris/tempo/releases
-4. Installed copies install the update by themselves within a day, while the popup is closed.
-   **Settings › Check for updates…** checks at once.
+4. Installed copies (1.1.0 and later) install the update by themselves within a day, while the popup is
+   closed. Older copies show Sparkle's alert or the footer hint. **Settings › Check for updates…** checks
+   at once.
 
 Versions are `MAJOR.MINOR.PATCH` and must increase. No pre-release tags. Never move or delete a
 published tag.

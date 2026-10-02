@@ -21,6 +21,8 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, SP
     @Published private(set) var updateAvailable = false
     /// The version of a downloaded update that waits for a quiet moment to install. The footer shows it.
     @Published private(set) var readyVersion: String?
+    /// True after a click on the footer button while a change waited for Productive: the install follows.
+    @Published private(set) var installRequested = false
     /// The two Sparkle settings, mirrored for the Settings screen. Sparkle stores them.
     @Published private(set) var automaticallyChecks = true
     @Published private(set) var automaticallyInstalls = true
@@ -37,7 +39,6 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, SP
     private let logger = Logger(subsystem: "app.tempo.menubar", category: "updates")
     /// Sparkle's block that installs the downloaded update and relaunches the app.
     private var installUpdate: (() -> Void)?
-    private var installRequested = false
     private var retry: Timer?
 
     override init() {
@@ -50,7 +51,11 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, SP
             .sink { [weak self] can in self?.canCheckForUpdates = can }
             .store(in: &cancellables)
         updater.publisher(for: \.automaticallyChecksForUpdates)
-            .sink { [weak self] on in self?.automaticallyChecks = on }
+            .sink { [weak self, weak updater] on in
+                self?.automaticallyChecks = on
+                // Sparkle reports automatic installs as off while checks are off: read the value again.
+                if let updater { self?.automaticallyInstalls = updater.automaticallyDownloadsUpdates }
+            }
             .store(in: &cancellables)
         updater.publisher(for: \.automaticallyDownloadsUpdates)
             .sink { [weak self] on in self?.automaticallyInstalls = on }
@@ -80,25 +85,37 @@ final class UpdateController: NSObject, ObservableObject, SPUUpdaterDelegate, SP
         controller.updater.automaticallyDownloadsUpdates = on
     }
 
-    /// The footer button: installs the downloaded update now, or as soon as no change waits for Productive.
+    /// The footer button: installs the downloaded update now. While a change waits for Productive, the
+    /// install waits too, and then also for a closed popup, like an automatic one.
     func installNow() {
         installRequested = true
-        installWhenQuiet()
+        if isBusy() { scheduleRetry() } else { install() }
     }
 
     /// Runs Sparkle's install block when nothing would be lost; otherwise tries again every 30 s.
     private func installWhenQuiet() {
-        guard let installUpdate else { return }
-        let allowed = installRequested || (automaticallyInstalls && !isPopoverShown())
-        guard allowed && !isBusy() else {
-            if retry == nil {
-                logger.notice("update \(self.readyVersion ?? "?", privacy: .public) waits for a quiet moment")
-                retry = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.installWhenQuiet() }
-                }
-            }
-            return
+        guard installUpdate != nil else { return }
+        guard isQuiet else { return scheduleRetry() }
+        // One more turn of the main queue first: a click handled just now (▶ in the menu bar, an answer to
+        // the idle question) starts its work in a task that runs before this block and makes `isBusy` true.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if self.isQuiet { self.install() } else { self.scheduleRetry() }
         }
+    }
+
+    private var isQuiet: Bool { (installRequested || automaticallyInstalls) && !isPopoverShown() && !isBusy() }
+
+    private func scheduleRetry() {
+        guard retry == nil else { return }
+        logger.notice("update \(self.readyVersion ?? "?", privacy: .public) waits for a quiet moment")
+        retry = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.installWhenQuiet() }
+        }
+    }
+
+    private func install() {
+        guard let installUpdate else { return }
         retry?.invalidate()
         retry = nil
         logger.notice("installing update \(self.readyVersion ?? "?", privacy: .public) and relaunching")
