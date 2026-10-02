@@ -1,6 +1,6 @@
 # Releasing Tempo
 
-Tempo ships from GitHub. Colleagues install with `install.sh`; installed copies update through
+Tempo ships from GitHub. Users install with `install.sh`; installed copies update themselves through
 Sparkle. The design is in `docs/superpowers/specs/2026-10-01-distribution-and-updates-design.md`.
 
 ## One-time setup
@@ -38,7 +38,7 @@ Sparkle. The design is in `docs/superpowers/specs/2026-10-01-distribution-and-up
    If a clipboard history tool is installed, delete the entry there too.
 
    Without the private key no update can be signed. Key rotation needs a Developer ID, so a lost
-   key means colleagues reinstall with the one-line command.
+   key means users reinstall with the one-line command.
 4. Optional housekeeping: `security delete-identity -c "Tempo Local Signing"` removes the stale
    self-signed identity from the earlier approach.
 
@@ -98,7 +98,7 @@ rm -f "$TMPDIR/sparkle-private.key"
 ```
 
 Never change `SU_PUBLIC_ED_KEY`. Installed copies accept only updates signed with the matching
-private key. A new key pair means that every colleague must reinstall with the one-line command.
+private key. A new key pair means that every user must reinstall with the one-line command.
 
 ## Troubleshooting
 
@@ -111,7 +111,7 @@ private key. A new key pair means that every colleague must reinstall with the o
   (Actions › the run › Re-run jobs). For a code fix, delete the unpublished tag
   (`git push origin :refs/tags/v1.2.0` and `git tag -d v1.2.0`), commit the fix, and tag again, or tag
   the next PATCH number. A tag that has a published release is never moved or deleted.
-- A colleague sees a Gatekeeper dialog: the zip came from a browser. Use the install command.
+- A user sees a Gatekeeper dialog: the zip came from a browser. Use the install command.
 - Two copies of Tempo: delete `/Applications/Tempo.app`; the installer uses `~/Applications`.
 
 ## Later: Developer ID
