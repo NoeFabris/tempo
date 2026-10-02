@@ -434,39 +434,83 @@ struct FooterBar: View {
     @EnvironmentObject var updates: UpdateController
 
     var body: some View {
-        HStack(spacing: 6) {
-            IconButton(systemName: "gearshape", help: "Settings") { nav.screen = .settings }
-            RefreshButton(help: "Refresh", isRefreshing: store.isLoading) { Task { await store.refresh() } }
-            if let version = updates.readyVersion {
-                IconButton(systemName: "arrow.down.circle.fill",
-                           help: updates.installRequested
-                               ? "Tempo \(version) installs when your changes have reached Productive."
-                               : "Tempo \(version) is ready. It installs when the popup closes. Click to install now.",
-                           tint: Brand.violet) {
-                    updates.installNow()
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                IconButton(systemName: "gearshape", help: "Settings") { nav.screen = .settings }
+                RefreshButton(help: "Refresh", isRefreshing: store.isLoading) { Task { await store.refresh() } }
+                if let version = updates.readyVersion {
+                    IconButton(systemName: "arrow.down.circle.fill",
+                               help: updates.installRequested
+                                   ? "Tempo \(version) installs when your changes have reached Productive."
+                                   : "Tempo \(version) is ready. It installs when the popup closes. Click to install now.",
+                               tint: Brand.violet) {
+                        updates.installNow()
+                    }
+                } else if updates.updateAvailable {
+                    IconButton(systemName: "arrow.down.circle", help: "Update available", tint: Brand.violet) {
+                        updates.checkForUpdates()
+                    }
                 }
-            } else if updates.updateAvailable {
-                IconButton(systemName: "arrow.down.circle", help: "Update available", tint: Brand.violet) {
-                    updates.checkForUpdates()
+                // Offline is short and clears itself, so it stays in the icon row.
+                if store.isOffline {
+                    Text("⚠︎ Offline. Changes will sync.").font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
                 }
+                Spacer()
+                IconButton(systemName: "power", help: "Quit Tempo") { NSApp.terminate(nil) }
             }
-            if let status {
-                Button { store.clearError() } label: {
-                    Text("⚠︎ " + status).font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
-                }
-                .buttonStyle(.plain)
-                .help(store.lastError ?? status)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            if let error = store.lastError {
+                Rectangle().fill(Brand.separator).frame(height: 1)
+                FooterError(message: error) { store.clearError() }
             }
-            Spacer()
-            IconButton(systemName: "power", help: "Quit Tempo") { NSApp.terminate(nil) }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
         .background(Brand.card)
     }
+}
 
-    private var status: String? {
-        if store.isOffline { return "Offline. Changes will sync." }
-        return store.lastError
+/// The full text of the last error, below the icon row. A click copies it; the xmark dismisses it.
+struct FooterError: View {
+    let message: String
+    let dismiss: () -> Void
+    @State private var copied = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Button(action: copy) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: copied ? "checkmark" : "exclamationmark.triangle")
+                        .font(.system(size: 10, weight: .semibold))
+                    // The message keeps its space while "Copied" shows, so the footer does not change height.
+                    Text(message)
+                        .font(Brand.font(11))
+                        .lineLimit(4)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .opacity(copied ? 0 : 1)
+                        .overlay(alignment: .topLeading) {
+                            if copied { Text("Copied to the clipboard").font(Brand.font(11)) }
+                        }
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(Brand.secondary)
+                .padding(.top, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Click to copy")
+            IconButton(systemName: "xmark", help: "Dismiss", action: dismiss)
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 10)
+        .padding(.vertical, 8)
+        .onChange(of: message) { _, _ in copied = false }
+    }
+
+    private func copy() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(message, forType: .string)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
     }
 }
