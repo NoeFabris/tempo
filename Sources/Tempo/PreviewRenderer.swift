@@ -43,6 +43,10 @@ enum PreviewRenderer {
                     .environmentObject(store).environment(\.colorScheme, scheme)
                 renderView(idle, size: NSSize(width: 340, height: 300), scheme, dir, "idle")
             }
+            // A start that Productive refuses: the footer shows the full error.
+            await store.start(SampleAPI.refusedService)
+            for scheme in [ColorScheme.dark, .light] { render(store, .main, scheme, dir, "main-error") }
+            for scheme in [ColorScheme.dark, .light] { render(store, .picker(.start), scheme, dir, "picker-note") }
             store.signOut()
             for scheme in [ColorScheme.dark, .light] { render(store, .main, scheme, dir, "setup") }
             group.leave()
@@ -113,6 +117,9 @@ private final class SampleAPI: ProductiveAPI, @unchecked Sendable {
                     budgetEnd: Day(lastMonthEnd)),
         ]
     }()
+    /// Not in `services`: Productive refuses a new entry on it without a note ("main-error", "picker-note").
+    static let refusedService = Service(id: "9099", name: "Design QA", budgetName: "Retainer 2026",
+                                        projectName: "[FAB] Experimentation", clientName: "Fabrikam Finance")
     lazy var entries: [TimeEntry] = {
         let week = Week.days(containing: Day(Date()), firstWeekday: 2)
         var list: [TimeEntry] = []
@@ -140,6 +147,10 @@ private final class SampleAPI: ProductiveAPI, @unchecked Sendable {
     }
     func trackableServices(personID: String) async throws -> [Service] { services }
     func createTimeEntry(personID: String, serviceID: String, day: Day, minutes: Int, note: String) async throws -> TimeEntry {
+        if serviceID == Self.refusedService.id && note.isEmpty {
+            // A budget that requires a note on every entry (Productive's time entry requirements).
+            throw ProductiveError.http(status: 422, message: "note: can't be blank")
+        }
         let e = TimeEntry(id: UUID().uuidString, day: day, minutes: minutes, note: note, service: services.first { $0.id == serviceID }!)
         entries.append(e)
         return e

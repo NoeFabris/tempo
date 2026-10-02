@@ -101,6 +101,30 @@ final class ServiceDataTests: XCTestCase {
         XCTAssertEqual(store.recentServices.map(\.id), ["B", "C", "A"] + (yesterdayInWeek ? ["D"] : []))
     }
 
+    func testErrorMessageNamesTheRefusedField() {
+        let body = #"{"errors":[{"status":"422","title":"can't be blank","source":{"pointer":"/data/attributes/note"}}]}"#
+        XCTAssertEqual(ProductiveClient.errorMessage(Data(body.utf8)), "note: can't be blank")
+        let named = #"{"errors":[{"title":"Invalid","detail":"Note is required","source":{"pointer":"/data/attributes/note"}}]}"#
+        XCTAssertEqual(ProductiveClient.errorMessage(Data(named.utf8)), "Invalid: Note is required", "no field twice")
+        XCTAssertTrue(ProductiveError.http(status: 422, message: "note: can't be blank").isAboutNote)
+        XCTAssertFalse(ProductiveError.http(status: 500, message: "note").isAboutNote)
+    }
+
+    func testTimeEntryRequirementsOfTheBudget() throws {
+        let json = #"""
+        {"data":[{"id":"1","type":"services","attributes":{"name":"Internal initiatives"},
+          "relationships":{"deal":{"data":{"type":"deals","id":"9"}}}},
+                 {"id":"2","type":"services","attributes":{"name":"CRO Development"},
+          "relationships":{"deal":{"data":{"type":"deals","id":"10"}}}}],
+         "included":[{"id":"9","type":"deals","attributes":{"name":"Internal","time_entry_requirements":["note"]}},
+                     {"id":"10","type":"deals","attributes":{"name":"Retainer"}}]}
+        """#
+        let doc = try JSONDecoder().decode(Document.self, from: Data(json.utf8))
+        let index = ResourceIndex(doc.data + doc.included)
+        XCTAssertEqual(Mapping.service(doc.data[0], index).requiresNote, true)
+        XCTAssertNil(Mapping.service(doc.data[1], index).requiresNote, "unknown when Productive does not send it")
+    }
+
     func testRefusalIsAnAnswerNotANetworkError() {
         XCTAssertTrue(ProductiveError.http(status: 404, message: "").isRefusal)
         XCTAssertTrue(ProductiveError.http(status: 422, message: "").isRefusal)

@@ -130,6 +130,15 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.render() }
             .store(in: &cancellables)
+        // A start that needs a note (also from the menu bar ▶): the picker asks for it.
+        store.$noteRequired
+            .compactMap { $0 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                if self.popover.isShown { self.nav.screen = .picker(.start) } else { self.showPopover(.picker(.start)) }
+            }
+            .store(in: &cancellables)
         render()
     }
 

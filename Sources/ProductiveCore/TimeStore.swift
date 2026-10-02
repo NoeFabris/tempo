@@ -62,6 +62,9 @@ public final class TimeStore: ObservableObject {
     @Published public private(set) var showWeekends: Bool
     @Published public private(set) var idleDetection: Bool
     @Published public private(set) var idleMinutes: Int
+    /// A service that needs a note before it can start: its budget requires one, or Productive refused the
+    /// start for want of one. The picker asks for the note.
+    @Published public private(set) var noteRequired: Service?
     /// Calendar meetings by day, loaded for the selected day.
     @Published public private(set) var calendar: [Day: [CalendarEvent]] = [:]
 
@@ -445,8 +448,6 @@ public final class TimeStore: ObservableObject {
             return
         }
         let startedAt = advanceClock()
-        let previous = timer.map { localStop($0, at: startedAt) }
-
         let today = Day(startedAt)
         let usable: (TimeEntry) -> Bool = { $0.day == today && !$0.isLocked && !$0.isPending }
         let existing: TimeEntry?
@@ -458,6 +459,13 @@ public final class TimeStore: ObservableObject {
             existing = note.isEmpty ? entries.first { usable($0) && $0.service.id == service.id && $0.note.isEmpty } : nil
             newNote = note
         }
+        if newNote.trimmingCharacters(in: .whitespaces).isEmpty && existing == nil && service.requiresNote == true {
+            noteRequired = service // Productive would refuse it.
+            return
+        }
+        noteRequired = nil
+        // Only now: a start that asks for a note first must leave the running timer alone.
+        let previous = timer.map { localStop($0, at: startedAt) }
         settings.lastService = service
 
         // Show the timer at once.
@@ -500,11 +508,17 @@ public final class TimeStore: ObservableObject {
             isOffline = true
             pending.append(.start(id: actionID, service: service, at: startedAt,
                                   entryID: entry?.id, baseMinutes: entry?.minutes ?? 0, note: note))
+        } catch let error as ProductiveError where error.isAboutNote && note.isEmpty && entry == nil {
+            if timer?.id == placeholderID { timer = nil }
+            noteRequired = service
+            lastError = "Productive needs a note for \(service.name). Add a note and start again. (\(error.errorDescription ?? ""))"
         } catch {
             if timer?.id == placeholderID { timer = nil }
             handle(error)
         }
     }
+
+    public func clearNoteRequired() { noteRequired = nil }
 
     public func stop() async {
         guard let running = timer else { return }

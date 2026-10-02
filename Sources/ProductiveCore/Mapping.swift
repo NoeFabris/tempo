@@ -15,8 +15,19 @@ public enum Mapping {
             clientName: company?[attribute: "name"]?.string ?? "",
             sectionName: section?[attribute: "name"]?.string,
             position: r[attribute: "position"]?.int,
-            budgetEnd: deal?[attribute: "end_date"]?.string.flatMap(Day.init(iso:))
+            budgetEnd: deal?[attribute: "end_date"]?.string.flatMap(Day.init(iso:)),
+            requiresNote: requirements(deal).map { $0.contains("note") }
         )
+    }
+
+    /// The fields a budget requires on its time entries, lowercased: ["note", "task"]. Nil when Productive
+    /// does not send them (the attribute is not visible to every role).
+    static func requirements(_ deal: Resource?) -> [String]? {
+        switch deal?[attribute: "time_entry_requirements"] {
+        case .array(let values)?: return values.compactMap { $0.string?.lowercased() }
+        case .string(let value)?: return value.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
+        default: return nil
+        }
     }
 
     /// The budget as Productive shows it. Every month of a recurring budget has the same name and its own

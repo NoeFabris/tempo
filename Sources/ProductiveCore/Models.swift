@@ -56,9 +56,11 @@ public struct Service: Identifiable, Equatable, Hashable, Codable, Sendable {
     public let position: Int?
     /// The last day of the budget, when it has one (monthly budgets do). Optional for stored data from older versions.
     public let budgetEnd: Day?
+    /// The budget refuses entries without a note (Productive's time entry requirements). Nil when unknown.
+    public let requiresNote: Bool?
 
     public init(id: String, name: String, budgetName: String = "", projectName: String = "", clientName: String = "",
-                sectionName: String? = nil, position: Int? = nil, budgetEnd: Day? = nil) {
+                sectionName: String? = nil, position: Int? = nil, budgetEnd: Day? = nil, requiresNote: Bool? = nil) {
         self.id = id
         self.name = name
         self.budgetName = budgetName
@@ -67,6 +69,7 @@ public struct Service: Identifiable, Equatable, Hashable, Codable, Sendable {
         self.sectionName = sectionName
         self.position = position
         self.budgetEnd = budgetEnd
+        self.requiresNote = requiresNote
     }
 
     public var section: String { sectionName ?? "" }

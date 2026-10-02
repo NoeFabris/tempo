@@ -13,6 +13,7 @@ struct ServicePickerView: View {
     @State private var note = ""
     @State private var expanded: Set<String> = []
     @FocusState private var searchFocused: Bool
+    @FocusState private var noteFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,11 +32,19 @@ struct ServicePickerView: View {
             .padding(.bottom, mode == .start ? 6 : 8)
 
             if mode == .start {
-                TextField("Note (optional)", text: $note)
+                TextField(store.noteRequired == nil ? "Note (optional)" : "Note (required)", text: $note)
+                    .focused($noteFocused)
                     .brandField()
                     .padding(.horizontal, 16)
                     .padding(.trailing, 30)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, store.noteRequired == nil ? 8 : 4)
+                if let service = store.noteRequired {
+                    Text("Productive needs a note for \(TimerHeaderView.client(service)) · \(service.name). Type it, then pick the service again.")
+                        .font(Brand.italic(11)).foregroundStyle(Brand.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                }
             }
 
             ScrollView {
@@ -54,9 +63,11 @@ struct ServicePickerView: View {
             }
         }
         .onAppear {
-            searchFocused = true
+            if store.noteRequired != nil && mode == .start { noteFocused = true } else { searchFocused = true }
             if store.services.isEmpty { Task { await store.refreshServices() } }
         }
+        .onChange(of: store.noteRequired) { _, service in if service != nil && mode == .start { noteFocused = true } }
+        .onDisappear { if mode == .start && nav.screen != .picker(.start) { store.clearNoteRequired() } }
     }
 
     // MARK: Browse (no search)

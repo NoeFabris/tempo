@@ -317,6 +317,44 @@ final class TimeStoreTests: XCTestCase {
         XCTAssertNil(store.lastError, "the next refresh is clean")
     }
 
+    func testRefusedStartWithoutNoteAsksForANote() async {
+        let store = await connectedStore()
+        api.failure = .http(status: 422, message: "note: can't be blank")
+        await store.start(cro)
+        XCTAssertFalse(store.isRunning, "no timer when Productive refuses the entry")
+        XCTAssertEqual(store.noteRequired, cro)
+        XCTAssertTrue(store.lastError?.contains("needs a note") == true)
+
+        api.failure = nil
+        await store.start(cro, note: "Cloud dev POC")
+        XCTAssertTrue(store.isRunning)
+        XCTAssertNil(store.noteRequired)
+        XCTAssertEqual(api.entries.last?.note, "Cloud dev POC")
+    }
+
+    func testOtherRefusalIsAPlainError() async {
+        let store = await connectedStore()
+        api.failure = .http(status: 422, message: "service: is not open for tracking")
+        await store.start(cro)
+        XCTAssertNil(store.noteRequired)
+        XCTAssertTrue(store.lastError?.contains("service: is not open") == true)
+    }
+
+    func testBudgetThatRequiresANoteIsNotSentWithoutOne() async {
+        let initiatives = Service(id: "9100", name: "Internal initiatives", requiresNote: true)
+        api.services = [cro, initiatives]
+        api.entries = [TimeEntry(id: "501", day: Day(Date()), minutes: 30, note: "", service: cro)]
+        api.timers = [RunningTimer(id: "7001", startedAt: Date(), timeEntryID: "501")]
+        let store = await connectedStore()
+        api.calls = []
+        await store.start(initiatives)
+        XCTAssertEqual(store.noteRequired, initiatives)
+        XCTAssertTrue(api.calls.isEmpty, "nothing is sent, and the running timer is not stopped")
+        XCTAssertEqual(store.runningEntry?.id, "501")
+        await store.start(initiatives, note: "Planning")
+        XCTAssertEqual(store.runningService?.id, "9100")
+    }
+
     func testPendingWorkWhileARequestRuns() async {
         let store = await connectedStore()
         XCTAssertFalse(store.hasPendingWork, "idle after the first load")

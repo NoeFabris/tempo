@@ -40,6 +40,12 @@ public enum ProductiveError: Error, LocalizedError, Equatable {
         if case .http(let status, _) = self { return (400..<500).contains(status) }
         return false
     }
+
+    /// A refusal about the note, for example on a budget that requires a note on every entry.
+    public var isAboutNote: Bool {
+        if case .http(_, let message) = self { return isRefusal && message.lowercased().contains("note") }
+        return false
+    }
 }
 
 /// The fields of a time entry to change. A nil field does not change.
@@ -314,10 +320,17 @@ public final class ProductiveClient: ProductiveAPI, @unchecked Sendable {
         }
     }
 
+    /// "title: detail", with the refused field first when Productive names it: "note: can't be blank".
     static func errorMessage(_ data: Data) -> String {
-        struct Errors: Decodable { struct E: Decodable { let title: String?; let detail: String? }; let errors: [E]? }
+        struct Errors: Decodable {
+            struct E: Decodable { struct Source: Decodable { let pointer: String? }; let title: String?; let detail: String?; let source: Source? }
+            let errors: [E]?
+        }
         if let e = try? JSONDecoder().decode(Errors.self, from: data), let first = e.errors?.first {
-            return [first.title, first.detail].compactMap { $0 }.joined(separator: ": ")
+            let field = first.source?.pointer?.split(separator: "/").last.map(String.init) // "/data/attributes/note"
+            let text = [first.title, first.detail].compactMap { $0 }.joined(separator: ": ")
+            guard let field, !field.isEmpty, !text.lowercased().contains(field.lowercased()) else { return text }
+            return "\(field): \(text)"
         }
         return String(data: data.prefix(200), encoding: .utf8) ?? "unknown"
     }
