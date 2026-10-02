@@ -42,6 +42,9 @@ final class IdleMonitor {
             .store(in: &cancellables)
     }
 
+    /// True while the idle question waits for an answer.
+    var isAsking: Bool { panel != nil }
+
     /// Seconds since the last keyboard, mouse or trackpad event. Needs no permission.
     private static var secondsSinceInput: TimeInterval {
         let anyInput = unsafeBitCast(UInt32.max, to: CGEventType.self) // kCGAnyInputEventType

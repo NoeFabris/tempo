@@ -8,6 +8,8 @@ final class MockAPI: ProductiveAPI, @unchecked Sendable {
     var services: [Service] = []
     var failure: ProductiveError?
     var calls: [String] = []
+    /// Seconds that `createTimeEntry` waits, to look at the store while a request runs.
+    var createDelay: TimeInterval = 0
     private var nextID = 1000
 
     private func check(_ call: String) throws {
@@ -27,6 +29,7 @@ final class MockAPI: ProductiveAPI, @unchecked Sendable {
 
     func createTimeEntry(personID: String, serviceID: String, day: Day, minutes: Int, note: String) async throws -> TimeEntry {
         try check("create \(serviceID) \(minutes)")
+        if createDelay > 0 { try await Task.sleep(nanoseconds: UInt64(createDelay * 1e9)) }
         let service = services.first { $0.id == serviceID } ?? Service(id: serviceID, name: "S")
         let e = TimeEntry(id: newID(), day: day, minutes: minutes, note: note, service: service)
         entries.append(e)
@@ -281,11 +284,26 @@ final class TimeStoreTests: XCTestCase {
         XCTAssertNil(entryID)
         XCTAssertEqual(minutes, 25)
 
+        XCTAssertTrue(store.hasPendingWork, "the offline block must not be lost by a relaunch")
+
         api.failure = nil
         await store.refresh()
         XCTAssertTrue(store.pending.isEmpty)
         XCTAssertFalse(store.isOffline)
         XCTAssertTrue(api.calls.contains("create 9001 25"))
+        XCTAssertFalse(store.hasPendingWork)
+    }
+
+    func testPendingWorkWhileARequestRuns() async {
+        let store = await connectedStore()
+        XCTAssertFalse(store.hasPendingWork, "idle after the first load")
+        api.createDelay = 0.3
+        let start = Task { await store.start(cro) }
+        // `start` shows the timer and queues its request in one step, before its first suspension.
+        while !store.isRunning { await Task.yield() }
+        XCTAssertTrue(store.hasPendingWork, "the start is still on its way to Productive")
+        await start.value
+        XCTAssertFalse(store.hasPendingWork)
     }
 
     func testOfflineStopCorrectsEntryTime() async {

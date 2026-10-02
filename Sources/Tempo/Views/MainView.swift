@@ -436,7 +436,13 @@ struct FooterBar: View {
             IconButton(systemName: "arrow.clockwise", help: "Refresh") { Task { await store.refresh() } }
                 .rotationEffect(.degrees(store.isLoading ? 180 : 0))
                 .animation(.easeInOut(duration: 0.4), value: store.isLoading)
-            if updates.updateAvailable {
+            if let version = updates.readyVersion {
+                IconButton(systemName: "arrow.down.circle.fill",
+                           help: "Tempo \(version) is ready. It installs when the popup closes. Click to install now.",
+                           tint: Brand.violet) {
+                    updates.installNow()
+                }
+            } else if updates.updateAvailable {
                 IconButton(systemName: "arrow.down.circle", help: "Update available", tint: Brand.violet) {
                     updates.checkForUpdates()
                 }

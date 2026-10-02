@@ -160,6 +160,17 @@ struct SettingsView: View {
                                 .buttonStyle(SecondaryButtonStyle())
                                 .disabled(!updates.canCheckForUpdates)
                         }
+                        Toggle(isOn: Binding(get: { updates.automaticallyChecks }, set: { updates.setAutomaticallyChecks($0) })) {
+                            Text("Check for updates automatically").font(Brand.font(13))
+                        }
+                        .toggleStyle(.switch)
+                        Toggle(isOn: Binding(get: { updates.automaticallyInstalls }, set: { updates.setAutomaticallyInstalls($0) })) {
+                            Text("Install updates automatically").font(Brand.font(13))
+                        }
+                        .toggleStyle(.switch)
+                        .disabled(!updates.automaticallyChecks)
+                        Text("A new version installs while the popup is closed, and Tempo opens again. The timer keeps running.")
+                            .font(Brand.font(10)).foregroundStyle(Brand.secondary)
                     }
 
                     Button("Sign out") { store.signOut() }

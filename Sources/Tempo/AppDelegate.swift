@@ -19,6 +19,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updates = UpdateController()
         statusBar = StatusBarController(store: store, updates: updates)
         idleMonitor = IdleMonitor(store: store) { [weak self] in self?.statusBar.itemScreenFrame }
+        // An automatic update relaunches the app only when that loses nothing.
+        updates.isBusy = { [weak self] in
+            guard let self else { return true }
+            return self.store.hasPendingWork || self.idleMonitor?.isAsking == true
+        }
+        updates.isPopoverShown = { [weak self] in self?.statusBar.isPopoverShown ?? false }
         if CommandLine.arguments.contains("--idle-preview") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [idleMonitor] in idleMonitor?.preview() }
             return

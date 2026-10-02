@@ -77,6 +77,8 @@ public final class TimeStore: ObservableObject {
 
     private var generation = 0
     private var tail: Task<Void, Never>?
+    /// Operations on the serial queue that have not finished, including the waiting ones.
+    private var queuedOperations = 0
     private var refreshQueued = false
     /// Real timers for optimistic starts, keyed by the start's action id.
     private var startedTimers: [UUID: RunningTimer] = [:]
@@ -166,12 +168,17 @@ public final class TimeStore: ObservableObject {
         return resumableEntry?.minutes ?? 0
     }
 
+    /// True while a change is on its way to Productive or waits offline. A quit now would lose it.
+    public var hasPendingWork: Bool { !pending.isEmpty || queuedOperations > 0 }
+
     // MARK: - Serial queue
 
     /// Runs `op` after all earlier queued operations.
     private func serial<T>(_ op: @escaping @MainActor () async -> T) async -> T {
         let previous = tail
+        queuedOperations += 1
         let task = Task { @MainActor () -> T in
+            defer { self.queuedOperations -= 1 }
             await previous?.value
             return await op()
         }

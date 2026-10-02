@@ -10,7 +10,8 @@ superseded by this document.
 1. The source and the releases of Tempo live in a public GitHub repository.
 2. A coworker installs Tempo with one Terminal command. No admin rights. No Gatekeeper dialog.
 3. The maintainer publishes a new version by pushing a git tag.
-4. Installed copies find the new version within a day and install it with one click (Sparkle 2).
+4. Installed copies find the new version within a day and install it by themselves at a quiet moment
+   (Sparkle 2, §5.7).
 
 ## 2. Facts the design rests on
 
@@ -38,7 +39,7 @@ Researched on 2026-10-01 (sources in §15).
 
 - Developer ID signing and notarisation (a later layer, §11).
 - Homebrew, Mac App Store, DMG or pkg installers.
-- Delta updates, update channels, pre-releases, silent automatic installs.
+- Delta updates, update channels, pre-releases.
 - An app icon. It can be added independently; Sparkle's alert then shows it.
 - A settings migration from the bundle id of early test builds.
 
@@ -74,7 +75,7 @@ INSTALL   coworker: curl -fsSL https://raw.githubusercontent.com/NoeFabris/tempo
 
 UPDATE    Tempo, once a day: GET …/releases/latest/download/appcast.xml
           → newer sparkle:version? → download zip → verify EdDSA with the key in the installed app
-          → remove quarantine → user clicks "Install and Relaunch"
+          → remove quarantine → install and relaunch while the popup is closed (§5.7)
 ```
 
 ### Load-bearing decisions
@@ -170,7 +171,12 @@ store.bootstrap()
 - `SettingsView`: a new `group("About")` before "Sign out" with one row: left `Text("Version \(updates.version)")`
   in `Brand.font(13)`, right a `Button("Check for updates…")` in `SecondaryButtonStyle`, disabled while
   `!updates.canCheckForUpdates`.
-- `FooterBar`: after the refresh button, `if updates.updateAvailable { IconButton(systemName: "arrow.down.circle", help: "Update available") { updates.checkForUpdates() } }`.
+- `SettingsView` "About" also has two switches bound to Sparkle's own settings:
+  "Check for updates automatically" (`automaticallyChecksForUpdates`) and "Install updates automatically"
+  (`automaticallyDownloadsUpdates`, disabled while the first is off). Sparkle stores both.
+- `FooterBar`: after the refresh button, `if let version = updates.readyVersion` shows
+  `arrow.down.circle.fill` ("Tempo x is ready… Click to install now.", runs `installNow()`); otherwise
+  `if updates.updateAvailable { IconButton(systemName: "arrow.down.circle", help: "Update available") { updates.checkForUpdates() } }`.
 - `SettingsView.setLaunchAtLogin` error text becomes "… Move Tempo to your Applications folder
   (~/Applications) and try again."
 - Sparkle's own windows do the rest: update alert with markdown release notes, progress,
@@ -186,9 +192,27 @@ store.bootstrap()
 | `SUFeedURL` | `https://github.com/$REPO/releases/latest/download/appcast.xml` |
 | `SUPublicEDKey` | the base64 public key constant |
 | `SUEnableAutomaticChecks` | `true` |
+| `SUAutomaticallyUpdate` | `true` (the default; a user who turns the switch off keeps that choice) |
 
-Defaults kept: `SUScheduledCheckInterval` 86400 s, `SUAutomaticallyUpdate` false (the user clicks
-"Install and Relaunch"; the in-memory offline queue is lost only at a moment the user chose).
+Default kept: `SUScheduledCheckInterval` 86400 s.
+
+### 5.7 Automatic installs
+
+With `SUAutomaticallyUpdate`, Sparkle downloads a new version in the background and then calls
+`SPUUpdaterDelegate.updater(_:willInstallUpdateOnQuit:immediateInstallationBlock:)`. Sparkle alone
+installs only on quit, and shows the update after a week without one (`SUScheduledImpatientCheckInterval`).
+A menu bar app is rarely quit, so `UpdateController` returns `true` and runs the block itself:
+
+- At once, and then every 30 s, when the popup is closed and `isBusy` is false. `isBusy` is
+  `TimeStore.hasPendingWork` (an offline action waits, or a request is on the serial queue) or the idle
+  question is open. The block installs and relaunches without a dialog.
+- A running timer is safe: it runs in Productive. The relaunched app loads it again.
+- The footer shows the ready version; a click installs now (it still waits for `isBusy`).
+- With the switch off, Sparkle does not download: a new version shows the "Update available" hint (§5.2).
+  An update that was downloaded before the switch went off installs on the next quit, or from the footer.
+
+Verified on 2026-10-02 with a local feed: a copy with its own bundle id, a throwaway EdDSA key and
+`SUFeedURL` on `localhost` updated from 9.0.0 to 9.0.1 and relaunched in about one second, with no dialog.
 
 ## 6. Build: `scripts/build-app.sh`
 
@@ -363,7 +387,7 @@ README changes:
 | Release for this tag already exists | `gh release create` fails; nothing is overwritten. |
 | Old manual copy in `/Applications` | `install.sh` warns. Two copies would confuse the login item. |
 | Coworker on an early test build (another bundle id) | The organisation ID, the token and the other settings must be entered once more: the app reads the token only after it has an organisation ID. The README says so. |
-| Offline queue in memory at update time | "Install and Relaunch" is user-initiated; the user chooses the moment. Pending offline actions are lost, as on any quit. |
+| Offline queue in memory at update time | The automatic install waits while `TimeStore.hasPendingWork` is true (§5.7). A manual "Install and Relaunch" is the user's choice; pending offline actions are lost, as on any quit. |
 | Sparkle alert hidden behind other windows | Gentle reminders: the footer hint stays until the user clicks it or the session ends. |
 | Preview, idle-preview and click-test runs | `UpdateController.start()` is not called. No network, no alerts. |
 | "The update is improperly signed" | Generic Sparkle text. The real cause is in Console (subsystem `org.sparkle-project.Sparkle`): usually a stale cached archive or a changed key. The runbook lists this. |

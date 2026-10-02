@@ -211,6 +211,8 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         previousApp = nil
     }
 
+    var isPopoverShown: Bool { popover.isShown }
+
     /// The menu bar item's frame in screen coordinates.
     var itemScreenFrame: NSRect? {
         guard let button = item.button, let window = button.window else { return nil }
