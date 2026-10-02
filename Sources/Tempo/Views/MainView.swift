@@ -385,6 +385,12 @@ struct EntryRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 8).fill(Brand.card))
+        // A double click anywhere on the row edits it, like the pencil. The buttons keep their own clicks.
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            guard !entry.isLocked && !entry.isPending else { return }
+            nav.startEdit(entry, liveMinutes: store.liveMinutes(entry))
+        }
         .confirmationDialog("Delete this entry?", isPresented: $confirmDelete) {
             Button("Delete \(TimeFormat.hm(store.liveMinutes(entry))) on \(entry.service.name)", role: .destructive) {
                 Task { await store.deleteEntry(entry) }

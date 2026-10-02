@@ -234,6 +234,10 @@ final class StatusBarController: NSObject, NSPopoverDelegate {
         if !NSApp.isActive { previousApp = NSWorkspace.shared.frontmostApplication }
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        // AppKit puts a status item's popover on the status bar layer (25), above the layer of notification
+        // banners (21), so banners slid under it. The utility layer (19) is below them, and still above
+        // normal windows and floating panels.
+        popover.contentViewController?.view.window?.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.utilityWindow)))
         popover.contentViewController?.view.window?.makeKey()
         Task { await store.refresh() }
     }
