@@ -40,7 +40,6 @@ Researched on 2026-10-01 (sources in §15).
 - Developer ID signing and notarisation (a later layer, §11).
 - Homebrew, Mac App Store, DMG or pkg installers.
 - Delta updates, update channels, pre-releases.
-- An app icon. It can be added independently; Sparkle's alert then shows it.
 - A settings migration from the bundle id of early test builds.
 
 ## 4. Architecture
@@ -231,9 +230,11 @@ Steps:
 1. `swift build -c release` with `--arch arm64 --arch x86_64` when `ARCHS=universal`. Errors are
    visible and fatal. No silent fallback: a release must be universal.
    `BIN_DIR=$(swift build … --show-bin-path)`.
-2. Assemble `Contents/MacOS/Tempo`, `Contents/Resources/Fonts/*`, and
+2. Assemble `Contents/MacOS/Tempo`, `Contents/Resources/Fonts/*`, `Contents/Resources/AppIcon.icns`, and
    `ditto "$BIN_DIR/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"` (keeps symlinks
-   and executable bits, which Sparkle's installer needs).
+   and executable bits, which Sparkle's installer needs). The icon is drawn by `scripts/make-icon.swift`
+   (a rounded square on the macOS grid, so macOS 26 and later show it without a grey plate) and
+   committed; `CFBundleIconFile` is `AppIcon`. Sparkle's alert shows it.
 3. `install_name_tool -add_rpath @executable_path/../Frameworks "$APP/Contents/MacOS/Tempo"`. SwiftPM
    links `@rpath/Sparkle.framework/…` but adds no rpath for it.
 4. Write `Info.plist` (§5.6) with the existing keys plus the Sparkle keys.

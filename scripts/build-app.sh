@@ -32,6 +32,8 @@ rm -rf "$APP" "$ZIP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Fonts" "$APP/Contents/Frameworks"
 cp "$BIN_DIR/Tempo" "$APP/Contents/MacOS/Tempo"
 cp Resources/Fonts/*.ttf Resources/Fonts/OFL.txt "$APP/Contents/Resources/Fonts/"
+# Drawn by scripts/make-icon.swift.
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 # ditto keeps the symlinks and executable bits inside the framework; Sparkle's installer needs them.
 ditto "$BIN_DIR/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 # SwiftPM links @rpath/Sparkle.framework but adds no rpath for it. (Older toolchains warn that this
@@ -47,6 +49,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>Tempo</string>
   <key>CFBundleIdentifier</key><string>app.tempo.menubar</string>
   <key>CFBundleExecutable</key><string>Tempo</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundleVersion</key><string>${VERSION}</string>
@@ -70,6 +73,7 @@ plutil -lint "$APP/Contents/Info.plist" >/dev/null || fail "Info.plist is not va
 # No grep -q: it stops at the first match, otool then dies of SIGPIPE, and pipefail calls that a failure.
 otool -l "$APP/Contents/MacOS/Tempo" | grep '@executable_path/../Frameworks' >/dev/null || fail "rpath missing"
 [[ -x "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" ]] || fail "Sparkle.framework is incomplete"
+[[ -s "$APP/Contents/Resources/AppIcon.icns" ]] || fail "the app icon is missing"
 ARCHS_BUILT="$(lipo -archs "$APP/Contents/MacOS/Tempo")"
 if [[ "$ARCHS" != "host" ]]; then
   [[ "$ARCHS_BUILT" == *arm64* && "$ARCHS_BUILT" == *x86_64* ]] || fail "not universal: $ARCHS_BUILT"
