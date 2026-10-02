@@ -18,6 +18,10 @@
   </picture>
 </p>
 
+<p align="center">
+  <img src="docs/images/idle.png" width="340" alt="The idle question: remove the idle time and continue, remove it and stop, or keep it">
+</p>
+
 ## Install
 
 Paste this in Terminal:

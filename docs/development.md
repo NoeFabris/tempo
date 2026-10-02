@@ -24,8 +24,9 @@ Render all popup screens with sample data (no account needed):
 dist/Tempo.app/Contents/MacOS/Tempo --render-previews /tmp/tempo-previews
 ```
 
-The README screenshots are `main-running-*.png` and `picker-*.png` from that folder, copied to
-`docs/images/` as `main-*.png` and `picker-*.png`.
+The README screenshots are `main-running-*.png`, `picker-*.png` and `idle-light.png` from that folder,
+copied to `docs/images/` as `main-*.png`, `picker-*.png` and `idle.png` (the idle question is yellow in
+both themes).
 
 The app icon is drawn in code. After a change to `scripts/make-icon.swift`, run it in the repository root;
 it writes `Resources/AppIcon.icns` and `docs/images/icon.png`:

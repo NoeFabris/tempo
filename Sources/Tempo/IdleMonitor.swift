@@ -110,7 +110,10 @@ final class IdleMonitor {
         panel.isReleasedWhenClosed = false
         panel.backgroundColor = NSColor(srgbRed: 0xF2 / 255, green: 0xFA / 255, blue: 0x7A / 255, alpha: 1)
         panel.appearance = NSAppearance(named: .aqua)
-        panel.contentView = NSHostingView(rootView: view)
+        let host = NSHostingView(rootView: view)
+        // The hidden title bar would be a safe area: empty space above the question, and in its size.
+        host.safeAreaRegions = []
+        panel.contentView = host
         panel.setContentSize(panel.contentView!.fittingSize)
         place(panel)
         panel.orderFrontRegardless()
@@ -172,7 +175,6 @@ struct IdlePromptView: View {
             }
         }
         .padding(20)
-        .padding(.top, 8)
         .frame(width: 340)
         .background(Brand.yellow)
         .foregroundStyle(Color.black)
