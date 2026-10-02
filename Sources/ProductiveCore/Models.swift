@@ -54,9 +54,11 @@ public struct Service: Identifiable, Equatable, Hashable, Codable, Sendable {
     public let sectionName: String?
     /// The order of the service in its budget.
     public let position: Int?
+    /// The last day of the budget, when it has one (monthly budgets do). Optional for stored data from older versions.
+    public let budgetEnd: Day?
 
     public init(id: String, name: String, budgetName: String = "", projectName: String = "", clientName: String = "",
-                sectionName: String? = nil, position: Int? = nil) {
+                sectionName: String? = nil, position: Int? = nil, budgetEnd: Day? = nil) {
         self.id = id
         self.name = name
         self.budgetName = budgetName
@@ -64,9 +66,16 @@ public struct Service: Identifiable, Equatable, Hashable, Codable, Sendable {
         self.clientName = clientName
         self.sectionName = sectionName
         self.position = position
+        self.budgetEnd = budgetEnd
     }
 
     public var section: String { sectionName ?? "" }
+
+    /// True when the budget ended before the month of `day`: a September budget seen in October.
+    public func budgetEndedBeforeMonth(of day: Day) -> Bool {
+        guard let budgetEnd else { return false }
+        return budgetEnd.iso.prefix(7) < day.iso.prefix(7) // "2026-09" < "2026-10"
+    }
 
     /// The client without its legal suffix: "Wingtip Online Ltd" → "Wingtip Online".
     public var shortClientName: String {

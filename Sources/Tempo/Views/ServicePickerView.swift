@@ -62,7 +62,7 @@ struct ServicePickerView: View {
     // MARK: Browse (no search)
 
     @ViewBuilder private var browse: some View {
-        let recent = Array(store.recentServices.prefix(6))
+        let recent = Array(store.recentServices.prefix(2))
         if !recent.isEmpty {
             block("Recent") { ForEach(recent) { row($0, showClient: true) } }
         }
@@ -152,10 +152,16 @@ struct ServicePickerView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     if showClient {
                         Text(TimerHeaderView.client(service)).font(Brand.font(13, .semibold)).lineLimit(1)
-                        Text([service.name, service.section].filter { !$0.isEmpty }.joined(separator: " · "))
-                            .font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text([service.name, service.section].filter { !$0.isEmpty }.joined(separator: " · "))
+                                .font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+                            BudgetMonthTag(service: service, day: store.today)
+                        }
                     } else {
-                        Text(service.name).font(Brand.font(13, .semibold)).lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(service.name).font(Brand.font(13, .semibold)).lineLimit(1)
+                            BudgetMonthTag(service: service, day: store.today)
+                        }
                         if !service.section.isEmpty {
                             Text(service.section).font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
                         }

@@ -24,7 +24,8 @@
       "relationships": { "deal": { "data": { "type": "deals", "id": "300" } } } },
     { "id": "9002", "type": "services", "attributes": { "name": "Internal meetings" },
       "relationships": { "deal": { "data": null } } },
-    { "id": "300", "type": "deals", "attributes": { "name": "[NWR] NWR - Full service experimentation - Budget (Sep 2026)" },
+    { "id": "300", "type": "deals", "attributes": { "name": "[NWR] NWR - Full service experimentation - Budget (Sep 2026)",
+                                                     "date": "2026-09-01", "end_date": "2026-09-30", "suffix": null },
       "relationships": {
         "project": { "data": { "type": "projects", "id": "40" } },
         "company": { "data": { "type": "companies", "id": "8" } }

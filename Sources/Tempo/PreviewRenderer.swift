@@ -92,13 +92,27 @@ private final class SampleTokens: TokenStoring, @unchecked Sendable {
 }
 
 private final class SampleAPI: ProductiveAPI, @unchecked Sendable {
-    let services = [
-        Service(id: "9001", name: "CRO Development", budgetName: "[NWR] NWR - Full service experimentation - Budget (Sep 2026)",
-                projectName: "[NWR] NWR - Full service experimentation", clientName: "Northwind Retail Limited"),
-        Service(id: "9002", name: "Internal meetings", budgetName: "Internal", projectName: "Internal", clientName: "Acme Agency Ltd"),
-        Service(id: "9003", name: "UX Research", budgetName: "Retainer 2026", projectName: "[FAB] Experimentation", clientName: "Fabrikam Finance"),
-        Service(id: "9004", name: "Analytics", budgetName: "Retainer 2026", projectName: "[FAB] Experimentation", clientName: "Fabrikam Finance"),
-    ]
+    /// Fictional clients only. This month's and last month's budget of the same client show the month tag.
+    let services: [Service] = {
+        let calendar = Calendar.current
+        let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: Date()))!
+        let monthEnd = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: monthStart)!
+        let lastMonthEnd = calendar.date(byAdding: .day, value: -1, to: monthStart)!
+        func budget(_ end: Date) -> String {
+            "[NWR] NWR - Full service experimentation - Budget (\(end.formatted(.dateTime.month(.abbreviated).year())))"
+        }
+        return [
+            Service(id: "9001", name: "CRO Development", budgetName: budget(monthEnd),
+                    projectName: "[NWR] NWR - Full service experimentation", clientName: "Northwind Retail Limited",
+                    budgetEnd: Day(monthEnd)),
+            Service(id: "9002", name: "Internal meetings", budgetName: "Internal", projectName: "Internal", clientName: "Acme Agency Ltd"),
+            Service(id: "9003", name: "UX Research", budgetName: "Retainer 2026", projectName: "[FAB] Experimentation", clientName: "Fabrikam Finance"),
+            Service(id: "9004", name: "Analytics", budgetName: "Retainer 2026", projectName: "[FAB] Experimentation", clientName: "Fabrikam Finance"),
+            Service(id: "9000", name: "CRO Development", budgetName: budget(lastMonthEnd),
+                    projectName: "[NWR] NWR - Full service experimentation", clientName: "Northwind Retail Limited",
+                    budgetEnd: Day(lastMonthEnd)),
+        ]
+    }()
     lazy var entries: [TimeEntry] = {
         let week = Week.days(containing: Day(Date()), firstWeekday: 2)
         var list: [TimeEntry] = []
@@ -109,6 +123,8 @@ private final class SampleAPI: ProductiveAPI, @unchecked Sendable {
                 list.append(TimeEntry(id: String(id), day: day, minutes: m, note: n, service: services[s], isLocked: i == 0))
             }
         }
+        // Tracked on last month's budget by mistake: the day list and the picker's Recent mark it.
+        list.append(TimeEntry(id: "899", day: Day(Date()), minutes: 20, note: "Sprint planning", service: services[4]))
         list.append(TimeEntry(id: "900", day: Day(Date()), minutes: 105, note: "", service: services[0],
                               jira: JiraLink(key: "WT-558", summary: "WT E97 Checkout Test 1 — Shorter Form",
                                              url: URL(string: "https://example.atlassian.net/browse/WT-558"))))

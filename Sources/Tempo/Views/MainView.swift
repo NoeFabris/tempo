@@ -103,9 +103,32 @@ struct EntryLabels: View {
             if !entry.note.isEmpty || entry.jira != nil {
                 EntryDetailLine(entry: entry)
             }
-            Text(entry.service.shortClientName.isEmpty ? entry.service.context : entry.service.name)
-                .font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
-                .help(entry.service.budgetName)
+            HStack(spacing: 6) {
+                Text(entry.service.shortClientName.isEmpty ? entry.service.context : entry.service.name)
+                    .font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
+                    .help(entry.service.budgetName)
+                BudgetMonthTag(service: entry.service, day: entry.day)
+            }
+        }
+    }
+}
+
+/// The month of a budget that ended before the month of `day`, for example "Sep" on an October day.
+/// Nothing for a current or open-ended budget, so it shows only around a change of month.
+struct BudgetMonthTag: View {
+    let service: Service
+    /// The day the service is used on: today in the picker, the entry's day for an entry.
+    let day: Day
+
+    var body: some View {
+        if service.budgetEndedBeforeMonth(of: day), let end = service.budgetEnd?.date() {
+            Text(end.formatted(.dateTime.month(.abbreviated)))
+                .font(Brand.italic(10))
+                .foregroundStyle(Brand.secondary)
+                .padding(.horizontal, 4)
+                .overlay(Capsule().stroke(Brand.separator))
+                .fixedSize()
+                .help("This budget ended on \(end.formatted(.dateTime.day().month(.abbreviated).year())).")
         }
     }
 }

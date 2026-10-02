@@ -21,11 +21,13 @@ final class MappingTests: XCTestCase {
         XCTAssertEqual(first.service.clientName, "Northwind Retail Limited")
         XCTAssertEqual(first.service.projectName, "[NWR] NWR - Full service experimentation")
         XCTAssertEqual(first.service.budgetName, "[NWR] NWR - Full service experimentation - Budget (Sep 2026)")
+        XCTAssertEqual(first.service.budgetEnd, Day(iso: "2026-09-30"))
         XCTAssertFalse(first.isLocked)
 
         XCTAssertEqual(entries[1].note, "")
         XCTAssertFalse(entries[1].isLocked, "approved entries can still be editable")
         XCTAssertEqual(entries[1].service.context, "")
+        XCTAssertNil(entries[1].service.budgetEnd, "no budget, no end date")
         XCTAssertEqual(doc.totalPages, 1)
 
         XCTAssertNil(first.jira)

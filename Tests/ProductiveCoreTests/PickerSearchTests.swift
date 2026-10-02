@@ -25,6 +25,48 @@ final class ServiceDataTests: XCTestCase {
         let s = try JSONDecoder().decode(Service.self, from: Data(old.utf8))
         XCTAssertNil(s.sectionName)
         XCTAssertEqual(s.section, "")
+        XCTAssertNil(s.budgetEnd)
+        XCTAssertFalse(s.budgetEndedBeforeMonth(of: Day(iso: "2030-01-01")!), "no end date: never from an earlier month")
+    }
+
+    /// Every month of a recurring budget has the same name; the suffix tells them apart, as in Productive.
+    func testRecurringBudgetGetsItsSuffixAndEndDate() throws {
+        let json = #"""
+        {"data":[{"id":"1","type":"services","attributes":{"name":"Account Management"},
+          "relationships":{"deal":{"data":{"type":"deals","id":"9"}}}},
+                 {"id":"2","type":"services","attributes":{"name":"CRO Development"},
+          "relationships":{"deal":{"data":{"type":"deals","id":"10"}}}}],
+         "included":[{"id":"9","type":"deals","attributes":{"name":"Webcare Basic","date":"2026-10-01",
+                                                          "end_date":"2026-10-31","suffix":"2026/10"}},
+                     {"id":"10","type":"deals","attributes":{"name":"Wingtip - FY26 - Budget (Sep 2026)",
+                                                           "end_date":"2026-09-30","suffix":null}}]}
+        """#
+        let doc = try JSONDecoder().decode(Document.self, from: Data(json.utf8))
+        let index = ResourceIndex(doc.data + doc.included)
+        let recurring = Mapping.service(doc.data[0], index)
+        XCTAssertEqual(recurring.budgetName, "Webcare Basic (2026/10)")
+        XCTAssertEqual(recurring.budgetEnd, Day(iso: "2026-10-31"))
+        let monthly = Mapping.service(doc.data[1], index)
+        XCTAssertEqual(monthly.budgetName, "Wingtip - FY26 - Budget (Sep 2026)", "no suffix: the name stays")
+        XCTAssertEqual(monthly.budgetEnd, Day(iso: "2026-09-30"))
+    }
+
+    func testBudgetFromAnEarlierMonth() {
+        let september = Service(id: "1", name: "CRO Development", budgetEnd: Day(iso: "2026-09-30"))
+        XCTAssertFalse(september.budgetEndedBeforeMonth(of: Day(iso: "2026-09-30")!), "its own month")
+        XCTAssertFalse(september.budgetEndedBeforeMonth(of: Day(iso: "2026-09-02")!))
+        XCTAssertTrue(september.budgetEndedBeforeMonth(of: Day(iso: "2026-10-01")!))
+        XCTAssertTrue(september.budgetEndedBeforeMonth(of: Day(iso: "2027-01-15")!))
+        let december = Service(id: "2", name: "CRO Development", budgetEnd: Day(iso: "2025-12-31"))
+        XCTAssertTrue(december.budgetEndedBeforeMonth(of: Day(iso: "2026-01-01")!), "across the year")
+        let rolling = Service(id: "3", name: "Web retainer", budgetEnd: Day(iso: "2026-10-18"))
+        XCTAssertFalse(rolling.budgetEndedBeforeMonth(of: Day(iso: "2026-10-02")!), "ends later this month")
+    }
+
+    func testStoredServiceKeepsItsEndDate() throws {
+        let service = Service(id: "1", name: "CRO Development", budgetEnd: Day(iso: "2026-09-30"))
+        let decoded = try JSONDecoder().decode(Service.self, from: JSONEncoder().encode(service))
+        XCTAssertEqual(decoded, service)
     }
 
     @MainActor

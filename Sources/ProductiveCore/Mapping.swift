@@ -10,12 +10,23 @@ public enum Mapping {
         return Service(
             id: r.id,
             name: r[attribute: "name"]?.string ?? "Service \(r.id)",
-            budgetName: deal?[attribute: "name"]?.string ?? "",
+            budgetName: budgetName(deal),
             projectName: project?[attribute: "name"]?.string ?? "",
             clientName: company?[attribute: "name"]?.string ?? "",
             sectionName: section?[attribute: "name"]?.string,
-            position: r[attribute: "position"]?.int
+            position: r[attribute: "position"]?.int,
+            budgetEnd: deal?[attribute: "end_date"]?.string.flatMap(Day.init(iso:))
         )
+    }
+
+    /// The budget as Productive shows it. Every month of a recurring budget has the same name and its own
+    /// suffix: "Webcare" + "2026/10" → "Webcare (2026/10)".
+    static func budgetName(_ deal: Resource?) -> String {
+        let name = deal?[attribute: "name"]?.string ?? ""
+        guard let suffix = deal?[attribute: "suffix"]?.string?.trimmingCharacters(in: .whitespaces), !suffix.isEmpty else {
+            return name
+        }
+        return "\(name) (\(suffix))"
     }
 
     public static func timeEntry(_ r: Resource, _ index: ResourceIndex) -> TimeEntry? {
