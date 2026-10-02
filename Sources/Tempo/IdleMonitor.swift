@@ -175,6 +175,9 @@ struct IdlePromptView: View {
             }
         }
         .padding(20)
+        // The heading's line box has about 3 pt above the letters: less padding makes the visible space
+        // above the question the same as below the buttons.
+        .padding(.top, -3)
         .frame(width: 340)
         .background(Brand.yellow)
         .foregroundStyle(Color.black)
