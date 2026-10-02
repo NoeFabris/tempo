@@ -23,7 +23,7 @@ struct ServicePickerView: View {
                 TextField("Search client, code, budget or service", text: $query)
                     .focused($searchFocused)
                     .brandField()
-                IconButton(systemName: "arrow.clockwise", help: "Reload services") {
+                RefreshButton(help: "Reload services", isRefreshing: store.isLoadingServices) {
                     Task { await store.refreshServices() }
                 }
             }

@@ -436,9 +436,7 @@ struct FooterBar: View {
     var body: some View {
         HStack(spacing: 6) {
             IconButton(systemName: "gearshape", help: "Settings") { nav.screen = .settings }
-            IconButton(systemName: "arrow.clockwise", help: "Refresh") { Task { await store.refresh() } }
-                .rotationEffect(.degrees(store.isLoading ? 180 : 0))
-                .animation(.easeInOut(duration: 0.4), value: store.isLoading)
+            RefreshButton(help: "Refresh", isRefreshing: store.isLoading) { Task { await store.refresh() } }
             if let version = updates.readyVersion {
                 IconButton(systemName: "arrow.down.circle.fill",
                            help: updates.installRequested

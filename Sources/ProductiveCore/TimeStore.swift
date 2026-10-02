@@ -54,6 +54,8 @@ public final class TimeStore: ObservableObject {
     @Published public private(set) var lastError: String?
     @Published public private(set) var isOffline = false
     @Published public private(set) var isLoading = false
+    /// True while the picker's "Reload services" runs.
+    @Published public private(set) var isLoadingServices = false
     @Published public private(set) var now: Date
     @Published public private(set) var weeklyTargetMinutes: Int
     @Published public private(set) var firstWeekday: Int
@@ -303,7 +305,9 @@ public final class TimeStore: ObservableObject {
     }
 
     public func refreshServices() async {
+        isLoadingServices = true
         await serial { [weak self] in await self?.performServicesRefresh() }
+        isLoadingServices = false
     }
 
     /// Runs on the serial queue only.

@@ -81,6 +81,71 @@ struct IconButton: View {
     }
 }
 
+/// The refresh button: a click turns the arrow once around its centre; it keeps turning while
+/// `isRefreshing` is true and always stops upright.
+struct RefreshButton: View {
+    var help: String = ""
+    let isRefreshing: Bool
+    let action: () -> Void
+    @State private var turns = 0.0
+    @State private var spinning = false
+    /// Mirrors `isRefreshing`: the animation's completion reads it after the view has changed.
+    @State private var busy = false
+
+    var body: some View {
+        Button {
+            action()
+            spin()
+        } label: {
+            RefreshGlyph()
+                .stroke(Brand.secondary, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                .frame(width: 13, height: 13)
+                .rotationEffect(.degrees(turns * 360))
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .onAppear { busy = isRefreshing }
+        .onChange(of: isRefreshing) { _, on in
+            busy = on
+            if on { spin() }
+        }
+    }
+
+    private func spin() {
+        guard !spinning else { return }
+        spinning = true
+        turn()
+    }
+
+    private func turn() {
+        withAnimation(.linear(duration: 0.8)) { turns += 1 } completion: {
+            if busy { turn() } else { spinning = false }
+        }
+    }
+}
+
+/// A refresh arrow drawn on the centre of its frame, like `arrow.clockwise`: an arc from three o'clock,
+/// clockwise round to the top, with an open head. The SF Symbol's circle is off its centre, so it wobbles
+/// when it turns.
+struct RefreshGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let c = CGPoint(x: rect.midX, y: rect.midY), r = min(rect.width, rect.height) / 2 * 0.78
+        let end = 0.8 * 2 * Double.pi // y points down, so increasing angles go clockwise
+        let p = CGPoint(x: c.x + r * cos(end), y: c.y + r * sin(end))
+        let tangent = CGPoint(x: -sin(end), y: cos(end)), normal = CGPoint(x: cos(end), y: sin(end))
+        let head = r * 0.5
+        let tip = CGPoint(x: p.x + tangent.x * head * 0.15, y: p.y + tangent.y * head * 0.15)
+        var path = Path()
+        path.addArc(center: c, radius: r, startAngle: .zero, endAngle: .radians(end), clockwise: false)
+        path.move(to: CGPoint(x: tip.x - (tangent.x - normal.x) * head, y: tip.y - (tangent.y - normal.y) * head))
+        path.addLine(to: tip)
+        path.addLine(to: CGPoint(x: tip.x - (tangent.x + normal.x) * head, y: tip.y - (tangent.y + normal.y) * head))
+        return path
+    }
+}
+
 struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         StyledPrimary(configuration: configuration)
