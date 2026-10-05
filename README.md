@@ -33,8 +33,45 @@ curl -fsSL https://raw.githubusercontent.com/NoeFabris/tempo/main/install.sh | s
 The script installs the latest release into `~/Applications` and opens Tempo. It needs no admin rights,
 and macOS shows no security dialog. Run it again at any time to reinstall. Requires macOS 14 or later.
 
-Then connect your account. In Productive, go to **Settings › API integrations** and generate a personal
-access token with read/write access. Paste the token and your organisation ID into Tempo.
+## Connect your Productive account
+
+Tempo needs two values: a personal access token and your organisation ID.
+
+### 1. Generate a personal access token
+
+1. In Productive, go to **Settings › API integrations**.
+2. Select **Generate new token**.
+3. Set the access level to **Read/Write**. Tempo creates and edits time entries, so a read-only token
+   does not work.
+4. Hover over the token name to show the token, then copy it.
+
+Copy the token immediately: Productive does not show it again. If you lose it, generate a new one.
+
+### 2. Find your organisation ID
+
+The organisation ID is a number. You can find it in two places:
+
+- **Settings › API integrations**, on the same page as the token.
+- **The address bar.** It is the number directly after `app.productive.io/`. For example, in
+  `https://app.productive.io/12345-acme/…` the organisation ID is `12345`.
+
+### 3. Paste both values into Tempo
+
+On first launch, Tempo opens the **Connect Productive** screen. Paste the token into **API token** and
+the number into **Organisation ID**, then select **Test connection**. When the values are correct, Tempo
+shows **Connected as** and your name. To change them later, open the popup and go to Settings.
+
+### Good to know
+
+- The token has the same access as your Productive user. Tempo shows only the services you can track
+  time on.
+- The token does not expire. It stops working when you revoke it, when you change your Productive
+  password, or when your user is deactivated. Generate a new token and paste it into Tempo.
+- Turning two-factor authentication on or off does not affect the token.
+
+Sources: [API access with personal access tokens](https://help.productive.io/en/articles/5440689-api-access-with-personal-access-tokens),
+[Productive API authorization](https://developer.productive.io/guides/authorization),
+[finding your organisation ID](https://help.productive.io/en/articles/6009276-logging-in-using-single-sign-on-sso).
 
 ## Features
 
