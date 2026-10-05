@@ -49,6 +49,13 @@ enum PreviewRenderer {
             for scheme in [ColorScheme.dark, .light] { render(store, .picker(.start), scheme, dir, "picker-note") }
             store.signOut()
             for scheme in [ColorScheme.dark, .light] { render(store, .main, scheme, dir, "setup") }
+            for scheme in [ColorScheme.dark, .light] {
+                let help = SetupView(helpExpanded: true)
+                    .frame(width: 340, height: 520).background(Brand.background)
+                    .foregroundStyle(Brand.text).tint(Brand.violet)
+                    .environmentObject(store).environment(\.colorScheme, scheme)
+                renderView(help, size: NSSize(width: 340, height: 520), scheme, dir, "setup-help")
+            }
             group.leave()
         }
         while group.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }

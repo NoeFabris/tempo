@@ -3,17 +3,83 @@ import ServiceManagement
 import SwiftUI
 
 struct SetupView: View {
+    var helpExpanded = false
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                BrandHeading(bold: "Connect", italic: "Productive", size: 20)
-                Text("Tempo tracks your time in Productive from the menu bar. Add your own API token to start.")
-                    .font(Brand.font(12)).foregroundStyle(Brand.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 8) {
+                    BrandHeading(bold: "Connect", italic: "Productive", size: 20)
+                    Text("Tempo tracks your time in Productive from the menu bar. Add your own API token to start.")
+                        .font(Brand.font(12)).foregroundStyle(Brand.secondary)
+                }
+                .padding(16)
+                ConnectionForm()
+                    .padding(.horizontal, 16)
+                ConnectionHelp(expanded: helpExpanded)
+                    .padding(16)
             }
-            .padding(16)
-            ConnectionForm()
-                .padding(.horizontal, 16)
-            Spacer()
+        }
+    }
+}
+
+/// "How do I get these?": the token and organisation ID steps, collapsed by default.
+struct ConnectionHelp: View {
+    static let guideURL = URL(string: "https://github.com/NoeFabris/tempo#connect-your-productive-account")!
+    @State private var expanded: Bool
+
+    init(expanded: Bool = false) {
+        _expanded = State(initialValue: expanded)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .bold)).foregroundStyle(Brand.secondary).frame(width: 10)
+                    Text("How do I get these?").font(Brand.font(12, .semibold))
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    steps("API token", [
+                        "In Productive, go to Settings › API integrations.",
+                        "Select Generate new token.",
+                        "Set the access level to Read/Write. A read-only token cannot log time.",
+                        "Hover over the token name to show the token, then copy it. Productive shows it only once.",
+                    ])
+                    steps("Organisation ID", [
+                        "Find it on the same Settings › API integrations page.",
+                        "Or use the number after app.productive.io/ in your browser, for example 12345.",
+                    ])
+                    Text("The token stops working when you change your Productive password. Then generate a new one.")
+                        .font(Brand.font(11)).foregroundStyle(Brand.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Link("Open the full guide", destination: Self.guideURL)
+                        .font(Brand.font(11, .semibold))
+                }
+                .padding(.leading, 16)
+            }
+        }
+    }
+
+    private func steps(_ title: String, _ lines: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(Brand.font(11, .semibold)).foregroundStyle(Brand.secondary)
+            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(index + 1).").font(Brand.digits(11)).foregroundStyle(Brand.secondary)
+                    Text(line).font(Brand.font(11))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 }
