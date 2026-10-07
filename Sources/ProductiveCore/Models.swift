@@ -141,8 +141,12 @@ public struct TimeEntry: Identifiable, Equatable, Sendable {
     /// Invoiced entries cannot change.
     public var isLocked: Bool
     public var jira: JiraLink?
+    /// The last time the entry got time: its creation, or the last start or stop of its timer.
+    /// Orders the day list, most recent first.
+    public var trackedAt: Date?
 
-    public init(id: String, day: Day, minutes: Int, note: String, service: Service, isLocked: Bool = false, jira: JiraLink? = nil) {
+    public init(id: String, day: Day, minutes: Int, note: String, service: Service, isLocked: Bool = false,
+                jira: JiraLink? = nil, trackedAt: Date? = nil) {
         self.id = id
         self.day = day
         self.minutes = minutes
@@ -150,6 +154,7 @@ public struct TimeEntry: Identifiable, Equatable, Sendable {
         self.service = service
         self.isLocked = isLocked
         self.jira = jira
+        self.trackedAt = trackedAt
     }
 
     /// A local placeholder for a start that has not reached Productive yet.

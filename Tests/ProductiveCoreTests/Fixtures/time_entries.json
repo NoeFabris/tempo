@@ -2,7 +2,10 @@
   "data": [
     {
       "id": "501", "type": "time_entries",
-      "attributes": { "date": "2026-09-30", "time": 190, "note": "<p>Built the PDP test &amp; QA</p>", "approved": false, "invoiced": false },
+      "attributes": { "date": "2026-09-30", "time": 190, "note": "<p>Built the PDP test &amp; QA</p>", "approved": false, "invoiced": false,
+        "created_at": "2026-09-30T08:00:00.000+01:00",
+        "timer_started_at": "2026-09-30T13:00:00.000+01:00",
+        "timer_stopped_at": "2026-09-30T14:10:00.000+01:00" },
       "relationships": {
         "person": { "data": { "type": "people", "id": "77" } },
         "service": { "data": { "type": "services", "id": "9001" } }

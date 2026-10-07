@@ -78,7 +78,9 @@ Sources: [API access with personal access tokens](https://help.productive.io/en/
 - **Menu bar timer.** `[▶ 0:45]`: click ▶ to start or stop, click the time to open the popup. ▶ continues
   your last task.
 - **The week at a glance.** Day totals, your weekly target and the entries of the selected day. Edit the
-  time, note, service or date, or add an entry.
+  time, note, service or date, or add an entry. The most recently tracked entry is first, with a `Last` tag.
+- **One entry per item.** Entries with the same day, service and note merge into one: Tempo adds up the
+  time and deletes the copies in Productive. A new start on the same item continues today's entry.
 - **Find a service fast.** Your two most recent services, your favourites, and a search in all services
   you can track: by client, code, budget or service.
 - **Monthly budgets.** A favourite moves to the new month's budget after one confirmation. A small tag

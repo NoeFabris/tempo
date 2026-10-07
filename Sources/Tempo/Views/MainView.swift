@@ -69,8 +69,13 @@ struct TimerHeaderView: View {
             HStack {
                 BrandHeading(bold: "Not", italic: "tracking", size: 16)
                 Spacer()
-                Button("Start…") { nav.screen = .picker(.start) }
-                    .buttonStyle(PrimaryButtonStyle())
+                // No ellipsis: in a short button it reads as cut-off text.
+                Button { nav.screen = .picker(.start) } label: {
+                    Label("Start timer", systemImage: "play.fill").labelStyle(StartLabelStyle())
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .fixedSize()
+                .help("Pick a service and start the timer")
             }
             .card()
         }
@@ -89,11 +94,22 @@ struct TimerHeaderView: View {
     }
 }
 
+private struct StartLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon.font(.system(size: 9, weight: .bold))
+            configuration.title
+        }
+    }
+}
+
 /// Client (title), then the Jira key and note, then the service. Used by the header and the rows.
 struct EntryLabels: View {
     let entry: TimeEntry
     var titleSize: CGFloat = 13
     var titleColor: Color = Brand.text
+    /// Marks the most recently tracked entry of the day.
+    var isLatest = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -108,8 +124,25 @@ struct EntryLabels: View {
                     .font(Brand.font(11)).foregroundStyle(Brand.secondary).lineLimit(1)
                     .help(entry.service.budgetName)
                 BudgetMonthTag(service: entry.service, day: entry.day)
+                if isLatest { LastTrackedTag(at: entry.trackedAt) }
             }
         }
+    }
+}
+
+/// "Last" on the most recently tracked entry of the day. The time is in the tooltip: the row is narrow.
+struct LastTrackedTag: View {
+    let at: Date?
+
+    var body: some View {
+        Text("Last")
+            .font(Brand.italic(10))
+            .foregroundStyle(Brand.violet)
+            .padding(.horizontal, 5)
+            .overlay(Capsule().stroke(Brand.violet.opacity(0.5)))
+            .fixedSize()
+            .help(at.map { "Tracked last on this day, at \($0.formatted(date: .omitted, time: .shortened))" }
+                  ?? "Tracked last on this day")
     }
 }
 
@@ -265,7 +298,10 @@ struct DayEntriesView: View {
                             .foregroundStyle(Brand.secondary)
                             .padding(.vertical, 18)
                     }
-                    ForEach(list) { entry in EntryRow(entry: entry) }
+                    // The list is most recent first. A running entry has its own mark (the violet stop).
+                    ForEach(list) { entry in
+                        EntryRow(entry: entry, isLatest: entry.id == list.first?.id && store.timer?.timeEntryID != entry.id)
+                    }
                     let meetings = store.meetings(on: store.selectedDay)
                     if !meetings.isEmpty {
                         SectionLabel(bold: "Calendar", italic: "")
@@ -339,6 +375,7 @@ struct EntryRow: View {
     @EnvironmentObject var store: TimeStore
     @EnvironmentObject var nav: Navigator
     let entry: TimeEntry
+    var isLatest = false
     @State private var confirmDelete = false
 
     private var isRunning: Bool { store.timer?.timeEntryID == entry.id }
@@ -362,7 +399,7 @@ struct EntryRow: View {
             .buttonStyle(.plain)
             .help(isRunning ? "Stop" : "Continue this entry")
 
-            EntryLabels(entry: entry)
+            EntryLabels(entry: entry, isLatest: isLatest)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
             Spacer(minLength: 4)

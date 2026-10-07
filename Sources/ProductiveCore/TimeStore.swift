@@ -146,12 +146,25 @@ public final class TimeStore: ObservableObject {
         return runningSeconds / 60
     }
 
+    /// The entries of `day`, most recently tracked first. The running entry is always first.
     public func entries(on day: Day) -> [TimeEntry] {
         var list = entries.filter { $0.day == day }
         if let running = runningEntry, running.day == day, !list.contains(where: { $0.id == running.id }) {
             list.append(running)
         }
-        return list
+        let runningID = timer?.timeEntryID
+        // Entries without a time keep their API order, after the others.
+        return list.enumerated().sorted { a, b in
+            let aRuns = a.element.id == runningID, bRuns = b.element.id == runningID
+            if aRuns != bRuns { return aRuns }
+            switch (a.element.trackedAt, b.element.trackedAt) {
+            case let (x?, y?) where x != y: return x > y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return a.offset < b.offset
+            }
+        }
+        .map(\.element)
     }
 
     public func entry(id: String) -> TimeEntry? {
@@ -324,16 +337,18 @@ public final class TimeStore: ObservableObject {
             let refused = try await flushPending(api: api, person: person)
             async let timers = api.recentTimers(personID: person.id)
             let entryList = try await loadEntries(api: api, personID: person.id)
-            let running = try await timers.first(where: \.isRunning)
+            let timerList = try await timers
+            let running = timerList.first(where: \.isRunning)
             // A user action changed the state while this refresh waited; its own work follows.
             guard gen == generation else { return }
-            entries = entryList
+            entries = Self.markTracked(entryList, by: timerList)
             setTimer(running)
             if let entry = runningEntry, !entry.isPending { remember(entry) }
             await loadCalendar(selectedDay, force: true)
             isOffline = false
             lastError = refused.map { "Productive refused a change made offline. \($0.errorDescription ?? "")" }
             await fillJiraNotes(api: api)
+            await mergeDuplicates(api: api)
             if servicesLoadedAt.map({ now.timeIntervalSince($0) > 6 * 3600 }) ?? true {
                 await performServicesRefresh()
             }
@@ -358,8 +373,69 @@ public final class TimeStore: ObservableObject {
                   let i = entries.firstIndex(where: { $0.id == entry.id }) else { continue }
             var merged = updated
             if merged.jira == nil { merged.jira = entry.jira }
-            entries[i] = merged
+            replaceEntry(at: i, with: merged)
         }
+    }
+
+    /// Entries with the same day, service, note and Jira issue are one item. Adds the time of the
+    /// later ones to the first (oldest) one and deletes them in Productive.
+    /// Invoiced, pending and running entries do not change.
+    /// Runs on the serial queue only.
+    private func mergeDuplicates(api: ProductiveAPI) async {
+        for group in Self.duplicateGroups(entries, runningID: timer?.timeEntryID) {
+            guard var keeper = entries.first(where: { $0.id == group[0].id }) else { continue }
+            for duplicate in group.dropFirst() {
+                let before = keeper.minutes
+                do {
+                    // Add first, then delete: a failed delete is undone below, so no time is lost.
+                    let updated = try await api.updateTimeEntry(id: keeper.id,
+                                                                changes: EntryChanges(minutes: before + duplicate.minutes))
+                    do {
+                        try await api.deleteTimeEntry(id: duplicate.id)
+                    } catch {
+                        _ = try? await api.updateTimeEntry(id: keeper.id, changes: EntryChanges(minutes: before))
+                        throw error
+                    }
+                    var merged = updated
+                    if merged.jira == nil { merged.jira = keeper.jira }
+                    merged.trackedAt = [keeper.trackedAt, duplicate.trackedAt, updated.trackedAt].compactMap { $0 }.max()
+                    keeper = merged
+                    entries.removeAll { $0.id == duplicate.id }
+                    if let i = entries.firstIndex(where: { $0.id == keeper.id }) { entries[i] = keeper }
+                    relink(from: duplicate.id, to: keeper)
+                } catch {
+                    handle(error)
+                    return
+                }
+            }
+        }
+    }
+
+    /// The groups of identical entries, oldest first in each group. Groups have 2 or more entries.
+    static func duplicateGroups(_ list: [TimeEntry], runningID: String?) -> [[TimeEntry]] {
+        struct Key: Hashable { let day: Day, service: String, note: String, jira: String? }
+        var groups: [Key: [TimeEntry]] = [:]
+        var order: [Key] = []
+        for entry in list where !entry.isLocked && !entry.isPending && entry.id != runningID {
+            let key = Key(day: entry.day, service: entry.service.id,
+                          note: entry.note.trimmingCharacters(in: .whitespaces), jira: entry.jira?.key)
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(entry)
+        }
+        return order.compactMap { key in
+            let group = groups[key]!
+            guard group.count > 1 else { return nil }
+            // Oldest first: Productive IDs grow with time.
+            return group.sorted { (Int($0.id) ?? 0, $0.id) < (Int($1.id) ?? 0, $1.id) }
+        }
+    }
+
+    /// A deleted duplicate's references (calendar meetings, the last entry) move to the entry it merged into.
+    private func relink(from oldID: String, to entry: TimeEntry) {
+        var links = settings.calendarLinks
+        for (event, id) in links where id == oldID { links[event] = entry.id }
+        if links != settings.calendarLinks { settings.calendarLinks = links }
+        if settings.lastEntry?.entryID == oldID { remember(entry) }
     }
 
     private func performServicesRefresh() async {
@@ -387,6 +463,26 @@ public final class TimeStore: ObservableObject {
             list += try await api.timeEntries(personID: personID, from: first, to: last)
         }
         return list
+    }
+
+    /// Puts the server's copy of an entry in the list. A later local `trackedAt` (from a stop) stays,
+    /// so an edit does not move the entry in the day list.
+    private func replaceEntry(at index: Int, with updated: TimeEntry) {
+        var updated = updated
+        if let local = entries[index].trackedAt, updated.trackedAt.map({ local > $0 }) ?? true { updated.trackedAt = local }
+        entries[index] = updated
+    }
+
+    /// Moves each entry's `trackedAt` to the last start or stop of its recent timers, when later.
+    static func markTracked(_ list: [TimeEntry], by timers: [RunningTimer]) -> [TimeEntry] {
+        list.map { entry in
+            var entry = entry
+            for t in timers where t.timeEntryID == entry.id {
+                let at = t.stoppedAt ?? t.startedAt
+                if entry.trackedAt.map({ at > $0 }) ?? true { entry.trackedAt = at }
+            }
+            return entry
+        }
     }
 
     private func setTimer(_ newTimer: RunningTimer?) {
@@ -439,8 +535,10 @@ public final class TimeStore: ObservableObject {
     }
 
     /// Starts `service`.
-    /// - With `preferred`: continues that entry when it is from today, else makes a new entry with its note.
-    /// - Without: continues today's entry on the service that has no note, else makes a new entry with `note`.
+    /// - With `preferred`: continues that entry when it is from today, else today's identical entry
+    ///   (same service and note), else makes a new entry with its note.
+    /// - Without: continues today's entry on the service with the same note (`note` can be empty),
+    ///   else makes a new entry with `note`.
     public func start(_ service: Service, continuing preferred: TimeEntry? = nil, note: String = "") async {
         guard api != nil, person != nil else { return }
         // A second click on what already runs does nothing (for example, a double click).
@@ -452,12 +550,13 @@ public final class TimeStore: ObservableObject {
         let usable: (TimeEntry) -> Bool = { $0.day == today && !$0.isLocked && !$0.isPending }
         let existing: TimeEntry?
         let newNote: String
-        if let preferred {
-            existing = usable(preferred) ? preferred : nil
-            newNote = preferred.note
+        newNote = preferred?.note ?? note
+        // A second entry with the same service and note on one day only splits the time.
+        let identical = entries.first { usable($0) && $0.service.id == service.id && $0.note == newNote }
+        if let preferred, usable(preferred) {
+            existing = preferred
         } else {
-            existing = note.isEmpty ? entries.first { usable($0) && $0.service.id == service.id && $0.note.isEmpty } : nil
-            newNote = note
+            existing = identical
         }
         if newNote.trimmingCharacters(in: .whitespaces).isEmpty && existing == nil && service.requiresNote == true {
             noteRequired = service // Productive would refuse it.
@@ -534,7 +633,10 @@ public final class TimeStore: ObservableObject {
                                     previousMinutes: index.map { entries[$0].minutes })
         generation += 1
         timer = nil
-        if let index { entries[index].minutes = timerBaseMinutes + Self.minutes(from: running.startedAt, to: stoppedAt) }
+        if let index {
+            entries[index].minutes = timerBaseMinutes + Self.minutes(from: running.startedAt, to: stoppedAt)
+            entries[index].trackedAt = stoppedAt
+        }
         return snapshot
     }
 
@@ -585,7 +687,10 @@ public final class TimeStore: ObservableObject {
         // Show it at once.
         generation += 1
         timer = nil
-        if let i = entries.firstIndex(where: { $0.id == entryID }) { entries[i].minutes = kept }
+        if let i = entries.firstIndex(where: { $0.id == entryID }) {
+            entries[i].minutes = kept
+            entries[i].trackedAt = Date()
+        }
 
         await serial { [weak self] in
             guard let self, let api = self.api else { return }
@@ -593,7 +698,7 @@ public final class TimeStore: ObservableObject {
                 _ = try await api.stopTimer(id: running.id)
                 var updated = try await api.updateTimeEntry(id: entryID, changes: EntryChanges(minutes: kept))
                 if updated.jira == nil { updated.jira = running.entry?.jira ?? self.entries.first { $0.id == entryID }?.jira }
-                if let i = self.entries.firstIndex(where: { $0.id == entryID }) { self.entries[i] = updated }
+                if let i = self.entries.firstIndex(where: { $0.id == entryID }) { self.replaceEntry(at: i, with: updated) }
                 if keepRunning {
                     var restarted = try await api.startTimer(timeEntryID: entryID)
                     if restarted.entry == nil { restarted.entry = updated }
@@ -729,7 +834,7 @@ public final class TimeStore: ObservableObject {
             guard !changes.isEmpty else { return true }
             do {
                 let updated = try await api.updateTimeEntry(id: entry.id, changes: changes)
-                if let i = self.entries.firstIndex(where: { $0.id == entry.id }) { self.entries[i] = updated }
+                if let i = self.entries.firstIndex(where: { $0.id == entry.id }) { self.replaceEntry(at: i, with: updated) }
                 if self.settings.lastEntry?.entryID == entry.id { self.remember(updated) }
                 return true
             } catch {

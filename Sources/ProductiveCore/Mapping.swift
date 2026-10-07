@@ -48,6 +48,8 @@ public enum Mapping {
         // Only invoiced entries are surely locked. Approved entries (often auto-approved) can still be
         // editable, depending on the organisation's approval policy; Productive refuses the change if not.
         let locked = r[attribute: "invoiced"]?.bool ?? false
+        let tracked = ["created_at", "timer_started_at", "timer_stopped_at"]
+            .compactMap { r[attribute: $0]?.string.flatMap(parseDate) }.max()
         return TimeEntry(
             id: r.id,
             day: day,
@@ -55,7 +57,8 @@ public enum Mapping {
             note: plainText(r[attribute: "note"]?.string ?? ""),
             service: service,
             isLocked: locked,
-            jira: jira(r)
+            jira: jira(r),
+            trackedAt: tracked
         )
     }
 

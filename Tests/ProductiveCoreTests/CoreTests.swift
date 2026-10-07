@@ -23,6 +23,7 @@ final class MappingTests: XCTestCase {
         XCTAssertEqual(first.service.budgetName, "[NWR] NWR - Full service experimentation - Budget (Sep 2026)")
         XCTAssertEqual(first.service.budgetEnd, Day(iso: "2026-09-30"))
         XCTAssertFalse(first.isLocked)
+        XCTAssertEqual(first.trackedAt, Mapping.parseDate("2026-09-30T14:10:00+01:00"), "the latest of the creation and timer times")
 
         XCTAssertEqual(entries[1].note, "")
         XCTAssertFalse(entries[1].isLocked, "approved entries can still be editable")

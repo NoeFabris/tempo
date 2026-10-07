@@ -127,6 +127,66 @@ final class TimeStoreTests: XCTestCase {
         XCTAssertEqual(store.runningEntry?.note, "E97 QA")
     }
 
+    func testDayListIsMostRecentlyTrackedFirst() async {
+        let today = Day(Date())
+        let base = Date().addingTimeInterval(-3 * 3600)
+        api.entries = [
+            TimeEntry(id: "1", day: today, minutes: 30, note: "a", service: cro, trackedAt: base),
+            TimeEntry(id: "2", day: today, minutes: 30, note: "b", service: cro),
+            TimeEntry(id: "3", day: today, minutes: 30, note: "c", service: cro, trackedAt: base.addingTimeInterval(3600)),
+        ]
+        // A recent timer on entry 1 is later than its creation.
+        api.timers = [RunningTimer(id: "t1", startedAt: base.addingTimeInterval(4000),
+                                   stoppedAt: base.addingTimeInterval(5000), timeEntryID: "1")]
+        let store = await connectedStore()
+        XCTAssertEqual(store.entries(on: today).map(\.id), ["1", "3", "2"], "no time goes last")
+
+        // The running entry is first; after its stop it stays first.
+        let entry3 = store.entries.first { $0.id == "3" }!
+        await store.start(cro, continuing: entry3)
+        XCTAssertEqual(store.entries(on: today).first?.id, "3")
+        await store.stop()
+        XCTAssertEqual(store.entries(on: today).map(\.id), ["3", "1", "2"])
+    }
+
+    func testRefreshMergesIdenticalEntries() async {
+        let today = Day(Date())
+        let other = Service(id: "9002", name: "Internal")
+        api.entries = [
+            TimeEntry(id: "601", day: today, minutes: 0, note: "Cloud dev POC", service: cro),
+            TimeEntry(id: "602", day: today, minutes: 30, note: "E32", service: cro),
+            TimeEntry(id: "603", day: today, minutes: 69, note: "Cloud dev POC", service: cro),
+            TimeEntry(id: "604", day: today, minutes: 89, note: "E32", service: cro),
+            TimeEntry(id: "605", day: today, minutes: 10, note: "E32", service: other),
+            TimeEntry(id: "606", day: today, minutes: 15, note: "E32", service: cro, isLocked: true),
+        ]
+        settings.calendarLinks = ["event-1": "604"]
+        let store = await connectedStore()
+        XCTAssertEqual(store.entries.map(\.id).sorted(), ["601", "602", "605", "606"])
+        XCTAssertEqual(store.entries.first { $0.id == "601" }?.minutes, 69)
+        XCTAssertEqual(store.entries.first { $0.id == "602" }?.minutes, 119)
+        XCTAssertEqual(api.entries.count, 4, "the duplicates are gone in Productive too")
+        XCTAssertTrue(api.calls.contains("delete 603"))
+        XCTAssertTrue(api.calls.contains("delete 604"))
+        XCTAssertEqual(settings.calendarLinks["event-1"], "602", "a meeting stays logged on the merged entry")
+    }
+
+    func testStartWithNoteContinuesTodaysIdenticalEntry() async {
+        let today = Day(Date())
+        api.entries = [TimeEntry(id: "701", day: today, minutes: 20, note: "Cloud dev POC", service: cro)]
+        let store = await connectedStore()
+        await store.start(cro, note: "Cloud dev POC")
+        XCTAssertFalse(api.calls.contains { $0.hasPrefix("create") })
+        XCTAssertEqual(store.runningEntry?.id, "701")
+
+        // Continuing yesterday's entry joins today's identical entry too.
+        await store.stop()
+        let yesterday = TimeEntry(id: "700", day: today.adding(days: -1), minutes: 40, note: "Cloud dev POC", service: cro)
+        await store.start(cro, continuing: yesterday)
+        XCTAssertFalse(api.calls.contains { $0.hasPrefix("create") })
+        XCTAssertEqual(store.runningEntry?.id, "701")
+    }
+
     func testWeekendsHiddenByDefault() async {
         let store = await connectedStore()
         XCTAssertFalse(store.showWeekends)
