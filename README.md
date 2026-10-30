@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/idle.png" width="340" alt="The idle question: remove the idle time and continue, remove it and stop, or keep it">
+  <img src="docs/images/idle.png" width="340" alt="The idle question: remove or keep the idle time, then continue or stop">
 </p>
 
 ## Install
@@ -86,7 +86,7 @@ Sources: [API access with personal access tokens](https://help.productive.io/en/
 - **Monthly budgets.** A favourite moves to the new month's budget after one confirmation. A small tag
   (`Sep`) marks a service from last month's budget.
 - **Calendar meetings.** Meetings from the calendar connected in Productive show under the day. + logs one.
-- **Idle detection.** Like Harvest: when you come back, remove the idle time and continue, or stop.
+- **Idle detection.** Like Harvest: when you come back, remove or keep the idle time, then continue or stop.
 - **Automatic updates.** A new version installs in the background while the popup is closed. The timer
   keeps running.
 - **Native.** Swift, no web runtime, light and dark mode.

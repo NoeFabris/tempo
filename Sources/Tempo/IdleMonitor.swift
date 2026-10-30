@@ -87,7 +87,8 @@ final class IdleMonitor {
             guard let self, !dryRun else { return }
             Task {
                 switch choice {
-                case .keep: break
+                case .keepAndContinue: break
+                case .keepAndStop: await self.store.stop()
                 case .removeAndContinue: await self.store.removeIdleTime(since: idleStart, keepRunning: true)
                 case .removeAndStop: await self.store.removeIdleTime(since: idleStart, keepRunning: false)
                 }
@@ -141,7 +142,7 @@ final class IdleMonitor {
 
 /// The idle question. Mellow Yellow with black, in both themes, so it stands out on any screen.
 struct IdlePromptView: View {
-    enum Choice { case keep, removeAndContinue, removeAndStop }
+    enum Choice { case keepAndContinue, keepAndStop, removeAndContinue, removeAndStop }
 
     @EnvironmentObject var store: TimeStore
     let idleStart: Date
@@ -162,14 +163,19 @@ struct IdlePromptView: View {
                     .padding(12)
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.black, lineWidth: 1))
             }
-            VStack(spacing: 6) {
-                Button("Remove idle time and continue") { choose(.removeAndContinue) }
-                    .buttonStyle(InkButtonStyle(filled: true))
-                    .keyboardShortcut(.defaultAction)
-                HStack(spacing: 6) {
+            // Columns: remove or keep the idle time. Rows: continue or stop the timer.
+            Grid(horizontalSpacing: 6, verticalSpacing: 6) {
+                GridRow {
+                    Button("Remove and continue") { choose(.removeAndContinue) }
+                        .buttonStyle(InkButtonStyle(filled: true))
+                        .keyboardShortcut(.defaultAction)
+                    Button("Keep and continue") { choose(.keepAndContinue) }
+                        .buttonStyle(InkButtonStyle(filled: false))
+                }
+                GridRow {
                     Button("Remove and stop") { choose(.removeAndStop) }
                         .buttonStyle(InkButtonStyle(filled: false))
-                    Button("Keep idle time") { choose(.keep) }
+                    Button("Keep and stop") { choose(.keepAndStop) }
                         .buttonStyle(InkButtonStyle(filled: false))
                 }
             }

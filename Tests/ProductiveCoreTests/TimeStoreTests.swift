@@ -539,6 +539,19 @@ final class TimeStoreTests: XCTestCase {
         XCTAssertEqual(api.timers.filter(\.isRunning).count, 0)
     }
 
+    func testKeepIdleTimeAndStop() async {
+        // The idle question's "Keep and stop" is a plain stop: the idle minutes stay on the entry.
+        let start = Date().addingTimeInterval(-40 * 60)
+        api.entries = [TimeEntry(id: "501", day: Day(Date()), minutes: 30, note: "E97", service: cro)]
+        api.timers = [RunningTimer(id: "7001", startedAt: start, timeEntryID: "501")]
+        let store = await connectedStore()
+        await store.stop()
+        XCTAssertEqual(api.entries[0].minutes, 70)
+        XCTAssertEqual(store.entries.first { $0.id == "501" }?.minutes, 70)
+        XCTAssertFalse(store.isRunning)
+        XCTAssertEqual(api.timers.filter(\.isRunning).count, 0)
+    }
+
     func testFavouriteReplacementAfterBudgetChange() async {
         settings.favourites = [Favourite(service: Service(id: "100", name: "CRO Development", clientName: "Northwind Retail"))]
         let store = await connectedStore()
